@@ -47,6 +47,43 @@ int main() {
            gentle_giving.snapshot().giving_income);
     assert(ambitious_giving.household_needs(10, 7).belonging <
            gentle_giving.household_needs(10, 7).belonging);
+    grace::World zoned;
+    assert(zoned.place(0, 0, grace::Tile::residential_zone));
+    assert(!zoned.place(20, 4, grace::Tile::commercial_zone));
+    assert(zoned.place(11, 9, grace::Tile::residential_zone));
+    zoned.advance_week();
+    assert(zoned.tile(0, 0) == grace::Tile::residential_zone);
+    assert(zoned.tile(11, 9) == grace::Tile::home);
+    assert(zoned.snapshot().capacity == 8);
+    grace::World business;
+    assert(business.place(11, 9, grace::Tile::commercial_zone));
+    assert(business.place(13, 9, grace::Tile::industrial_zone));
+    business.advance_week();
+    assert(business.tile(11, 9) == grace::Tile::commercial);
+    assert(business.tile(13, 9) == grace::Tile::industrial_zone);
+    business.advance_week();
+    assert(business.tile(13, 9) == grace::Tile::industrial);
+    assert(business.snapshot().jobs == 10);
+    assert(business.snapshot().tax_income > 0);
+    grace::World no_business;
+    no_business.advance_week();
+    no_business.advance_week();
+    assert(business.snapshot().residential_demand >
+           no_business.snapshot().residential_demand);
+    grace::World park_demand;
+    assert(park_demand.place(13, 9, grace::Tile::park));
+    assert(park_demand.snapshot().residential_demand > start.residential_demand);
+    const auto normal_tax = business.snapshot();
+    business.set_tax_policy(grace::TaxPolicy::low);
+    assert(business.snapshot().tax_income < normal_tax.tax_income);
+    assert(business.snapshot().commercial_demand > normal_tax.commercial_demand);
+    const auto low_tax = business.snapshot();
+    business.set_tax_policy(grace::TaxPolicy::high);
+    assert(business.snapshot().tax_income > normal_tax.tax_income);
+    assert(business.snapshot().industrial_demand < low_tax.industrial_demand);
+    assert(business.remove(11, 8));
+    assert(business.snapshot().shops == 0);
+    assert(business.snapshot().jobs == 6);
     assert(!world.place(-1, 0, grace::Tile::road));
     assert(!world.place(0, 0, grace::Tile::home));
     assert(world.placement_error(0, 0, grace::Tile::road) ==

@@ -18,7 +18,7 @@ constexpr int header = 100;
 constexpr int map_width = grace::World::width * 40;
 constexpr int map_height = grace::World::height * 40;
 constexpr int window_width = map_width + 2 * margin;
-constexpr int window_height = map_height + header + 76;
+constexpr int window_height = map_height + header + 118;
 
 struct Camera {
     float zoom = 1.0f;
@@ -81,10 +81,24 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
         shape(19, 16, 7, 2, {231, 216, 171});
         break;
     case grace::Tile::home:
+    case grace::Tile::residential_zone:
         shape(7, 13, 20, 16, {242, 221, 177});
         shape(4, 9, 26, 6, {154, 81, 66});
         shape(15, 20, 6, 9, {111, 81, 66});
         shape(22, 6, 3, 5, {111, 81, 66});
+        break;
+    case grace::Tile::commercial_zone:
+        shape(5, 13, 24, 16, {203, 226, 224});
+        shape(4, 9, 26, 7, {61, 126, 139});
+        shape(8, 9, 5, 7, {239, 218, 161});
+        shape(19, 9, 5, 7, {239, 218, 161});
+        shape(14, 20, 7, 9, {61, 126, 139});
+        break;
+    case grace::Tile::industrial_zone:
+        shape(5, 16, 25, 13, {178, 151, 121});
+        shape(4, 12, 26, 5, {97, 91, 86});
+        shape(22, 4, 5, 9, {125, 102, 88});
+        shape(9, 20, 5, 5, {239, 218, 161});
         break;
     case grace::Tile::chapel:
         shape(6, 14, 22, 15, {245, 238, 211});
@@ -245,6 +259,37 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(4, 11, 32, 7, {154, 81, 66});
         shape(17, 23, 7, 11, {111, 81, 66});
         break;
+    case grace::Tile::residential_zone:
+        shape(3, 3, 34, 34, {161, 177, 113});
+        shape(10, 18, 20, 15, {225, 215, 172});
+        shape(8, 14, 24, 5, {154, 81, 66});
+        break;
+    case grace::Tile::commercial_zone:
+        shape(3, 3, 34, 34, {102, 155, 164});
+        shape(8, 17, 24, 16, {203, 226, 224});
+        shape(6, 11, 28, 8, {61, 126, 139});
+        shape(10, 11, 5, 8, {239, 218, 161});
+        shape(22, 11, 5, 8, {239, 218, 161});
+        break;
+    case grace::Tile::industrial_zone:
+        shape(3, 3, 34, 34, {166, 139, 110});
+        shape(7, 18, 26, 15, {178, 151, 121});
+        shape(6, 13, 28, 6, {97, 91, 86});
+        shape(24, 5, 5, 9, {125, 102, 88});
+        break;
+    case grace::Tile::commercial:
+        shape(6, 13, 28, 22, {219, 224, 213});
+        shape(4, 9, 32, 8, {61, 126, 139});
+        shape(9, 9, 6, 8, {239, 218, 161});
+        shape(23, 9, 6, 8, {239, 218, 161});
+        shape(16, 24, 8, 11, {61, 126, 139});
+        break;
+    case grace::Tile::industrial:
+        shape(5, 18, 30, 17, {178, 151, 121});
+        shape(4, 13, 32, 7, {97, 91, 86});
+        shape(25, 5, 6, 10, {125, 102, 88});
+        shape(10, 23, 6, 6, {239, 218, 161});
+        break;
     case grace::Tile::chapel:
         shape(6, 16, 28, 19, {245, 238, 211});
         shape(4, 12, 32, 6, {90, 105, 133});
@@ -262,7 +307,10 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         break;
     default: break;
     }
-    if (type != grace::Tile::meadow && !connected) {
+    const bool pending_zone = type == grace::Tile::residential_zone ||
+        type == grace::Tile::commercial_zone ||
+        type == grace::Tile::industrial_zone;
+    if (type != grace::Tile::meadow && !pending_zone && !connected) {
         SDL_SetRenderDrawColor(renderer, 226, 75, 67, 255);
         const SDL_FRect warning{px + 2 * scale, py + 2 * scale,
                                 35 * scale, 35 * scale};
@@ -325,8 +373,12 @@ std::string town_advice(const grace::World& world) {
     if (state.belonging < 55) return "Belonging is falling. Staff a chapel or host a gathering (E).";
     if (state.volunteers_used == state.volunteers_available)
         return "All volunteers are assigned. Grow the town before adding more services.";
-    if (state.treasury < 80) return "Funds are low. Let weeks pass or add homes near services.";
-    return "Grow connected homes, then check chapel and pantry coverage with tools 3 and 4.";
+    if (state.treasury < 80) return "Funds are low. Check the budget (B) and zone homes near services.";
+    if (state.capacity - state.population <= 2 && state.residential_demand >= 25)
+        return "Housing demand is rising. Paint residential zones (2) beside connected roads.";
+    if (state.commercial_demand >= 25 && state.shops == 0)
+        return "Residents can support shops. Paint a commercial zone (3) beside a road.";
+    return "Watch the demand bars, then inspect chapel and pantry coverage with tools 5 and 6.";
 }
 
 const char* giving_name(grace::GivingPolicy policy) {
@@ -341,6 +393,14 @@ const char* service_name(grace::ServiceBudget budget) {
     switch (budget) {
     case grace::ServiceBudget::lean: return "LEAN";
     case grace::ServiceBudget::generous: return "GENEROUS";
+    default: return "BALANCED";
+    }
+}
+
+const char* tax_name(grace::TaxPolicy policy) {
+    switch (policy) {
+    case grace::TaxPolicy::low: return "LOW";
+    case grace::TaxPolicy::high: return "HIGH";
     default: return "BALANCED";
     }
 }
@@ -381,16 +441,22 @@ void autoplay_step(grace::World& world) {
     }
 }
 
-struct RoadPaintResult { int added; int x; int y; };
+bool is_zone(grace::Tile type) {
+    return type == grace::Tile::residential_zone ||
+           type == grace::Tile::commercial_zone ||
+           type == grace::Tile::industrial_zone;
+}
 
-RoadPaintResult paint_road_segment(grace::World& world, int from_x, int from_y,
-                                   int target_x, int target_y) {
+struct PaintResult { int added; int x; int y; };
+
+PaintResult paint_segment(grace::World& world, grace::Tile type,
+                          int from_x, int from_y, int target_x, int target_y) {
     int x = from_x;
     int y = from_y;
     int added = 0;
     auto passable = [&](int next_x, int next_y) {
-        return world.tile(next_x, next_y) == grace::Tile::road ||
-               world.can_place(next_x, next_y, grace::Tile::road);
+        return world.tile(next_x, next_y) == type ||
+               world.can_place(next_x, next_y, type);
     };
     while (x != target_x || y != target_y) {
         const int dx = target_x - x;
@@ -402,8 +468,7 @@ RoadPaintResult paint_road_segment(grace::World& world, int from_x, int from_y,
         if (!horizontal && !vertical) break;
         if (horizontal && (!vertical || std::abs(dx) >= std::abs(dy))) x += step_x;
         else y += step_y;
-        if (world.tile(x, y) != grace::Tile::road &&
-            world.place(x, y, grace::Tile::road)) ++added;
+        if (world.tile(x, y) != type && world.place(x, y, type)) ++added;
     }
     return {added, x, y};
 }
@@ -413,13 +478,15 @@ RoadPaintResult paint_road_segment(grace::World& world, int from_x, int from_y,
 int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
+    const bool zone_smoke = argc > 1 && std::string(argv[1]) == "--zone-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
+    const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads ||
-         capture_budget || capture_bankrupt);
+         capture_budget || capture_zones || capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
     int exit_status = 0;
@@ -469,15 +536,28 @@ int main(int argc, char** argv) {
         world.place(12, 9, grace::Tile::road);
         world.place(13, 9, grace::Tile::road);
     }
+    if (capture_zones) {
+        world.place(9, 7, grace::Tile::residential_zone);
+        world.place(11, 9, grace::Tile::commercial_zone);
+        world.place(13, 9, grace::Tile::industrial_zone);
+        world.place(14, 9, grace::Tile::park);
+        world.advance_week();
+        world.advance_week();
+        world.place(14, 7, grace::Tile::residential_zone);
+        world.place(16, 8, grace::Tile::commercial_zone);
+        world.place(15, 9, grace::Tile::industrial_zone);
+    }
     Camera camera;
-    grace::Tile selected = capture && !capture_roads && !capture_budget && !capture_bankrupt
+    grace::Tile selected = capture && !capture_roads && !capture_budget &&
+        !capture_zones && !capture_bankrupt
         ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
     bool paused = soak_seconds == 0;
-    bool simulation_started = soak_seconds > 0 || capture_bankrupt || bankrupt_smoke;
+    bool simulation_started = soak_seconds > 0 || capture_zones ||
+        capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
     bool dragging = false;
-    bool painting_roads = false;
+    bool painting_tiles = false;
     int paint_x = 0, paint_y = 0;
     std::string feedback = world.snapshot().bankrupt
         ? "BANKRUPT: review the budget or start a new town."
@@ -487,9 +567,10 @@ int main(int argc, char** argv) {
     Uint64 last_frame = last_week;
     Uint64 last_autoplay = last_week;
     const Uint64 started = last_week;
-    constexpr std::array<grace::Tile, 5> tools{
-        grace::Tile::road, grace::Tile::home, grace::Tile::chapel,
-        grace::Tile::pantry, grace::Tile::park};
+    constexpr std::array<grace::Tile, 7> tools{
+        grace::Tile::road, grace::Tile::residential_zone,
+        grace::Tile::commercial_zone, grace::Tile::industrial_zone,
+        grace::Tile::chapel, grace::Tile::pantry, grace::Tile::park};
     auto new_town = [&] {
         world = grace::World{};
         camera = Camera{};
@@ -498,7 +579,7 @@ int main(int argc, char** argv) {
         paused = true;
         budget_open = false;
         dragging = false;
-        painting_roads = false;
+        painting_tiles = false;
         last_week = SDL_GetTicks();
         feedback = "New town ready. Press Space when your setup is complete.";
         feedback_until = SDL_GetTicks() + 4000;
@@ -510,6 +591,31 @@ int main(int argc, char** argv) {
         click.button.x = 370;
         click.button.y = 442;
         SDL_PushEvent(&click);
+    }
+    if (zone_smoke) {
+        auto click = [&](float x, float y) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = SDL_BUTTON_LEFT;
+            event.button.x = x;
+            event.button.y = y;
+            SDL_PushEvent(&event);
+        };
+        SDL_Event tax{};
+        tax.type = SDL_EVENT_KEY_DOWN;
+        tax.key.key = SDLK_T;
+        SDL_PushEvent(&tax);
+        click(margin + 52 + 22, 38);
+        click(margin + 9.5f * base_cell, header + 7.5f * base_cell);
+        SDL_Event zone_drag{};
+        zone_drag.type = SDL_EVENT_MOUSE_MOTION;
+        zone_drag.motion.x = margin + 8.5f * base_cell;
+        zone_drag.motion.y = header + 7.5f * base_cell;
+        SDL_PushEvent(&zone_drag);
+        click(margin + 2 * 52 + 22, 38);
+        click(margin + 11.5f * base_cell, header + 9.5f * base_cell);
+        click(margin + 3 * 52 + 22, 38);
+        click(margin + 13.5f * base_cell, header + 9.5f * base_cell);
     }
     if (drag_smoke) {
         SDL_Event down{};
@@ -558,10 +664,10 @@ int main(int argc, char** argv) {
             if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
                 event.button.button == SDL_BUTTON_MIDDLE) dragging = false;
             if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
-                event.button.button == SDL_BUTTON_LEFT) painting_roads = false;
+                event.button.button == SDL_BUTTON_LEFT) painting_tiles = false;
             if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 dragging = false;
-                painting_roads = false;
+                painting_tiles = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
                 if (event.key.key == SDLK_ESCAPE) running = false;
@@ -594,6 +700,13 @@ int main(int argc, char** argv) {
                     feedback = std::string("Services set to ") + service_name(world.snapshot().service_budget) + ".";
                     feedback_until = SDL_GetTicks() + 3500;
                 }
+                if (event.key.key == SDLK_T) {
+                    const int next = (static_cast<int>(world.snapshot().tax_policy) + 1) % 3;
+                    world.set_tax_policy(static_cast<grace::TaxPolicy>(next));
+                    feedback = std::string("Business tax set to ") + tax_name(world.snapshot().tax_policy) +
+                        ". Higher taxes raise revenue but slow new business growth.";
+                    feedback_until = SDL_GetTicks() + 4500;
+                }
                 if (event.key.key == SDLK_V) {
                     world.set_care_priority(!world.snapshot().care_first);
                     feedback = world.snapshot().care_first
@@ -618,9 +731,10 @@ int main(int argc, char** argv) {
                     camera.zoom_at(1.15f, window_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS)
                     camera.zoom_at(1.0f / 1.15f, window_width / 2.0f, header + map_height / 2.0f);
-                if (event.key.key >= SDLK_1 && event.key.key <= SDLK_5)
+                if (event.key.key >= SDLK_1 && event.key.key <= SDLK_7) {
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
-                if (selected != grace::Tile::road) painting_roads = false;
+                    painting_tiles = false;
+                }
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL) {
                 float mx, my;
@@ -635,18 +749,20 @@ int main(int argc, char** argv) {
                 SDL_RenderCoordinatesFromWindow(renderer, old_x, old_y, &old_x, &old_y);
                 camera.pan(x - old_x, y - old_y);
             }
-            if (event.type == SDL_EVENT_MOUSE_MOTION && painting_roads &&
-                selected == grace::Tile::road) {
+            if (event.type == SDL_EVENT_MOUSE_MOTION && painting_tiles &&
+                (selected == grace::Tile::road || is_zone(selected))) {
                 float mx = event.motion.x, my = event.motion.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
                 int x, y;
                 if (camera.tile_at(mx, my, x, y)) {
                     const int before = world.snapshot().treasury;
-                    const auto result = paint_road_segment(world, paint_x, paint_y, x, y);
+                    const auto result = paint_segment(world, selected, paint_x, paint_y, x, y);
                     paint_x = result.x;
                     paint_y = result.y;
                     if (result.added > 0) {
-                        feedback = std::to_string(result.added) + " road tiles built for " +
+                        feedback = std::to_string(result.added) +
+                                   (selected == grace::Tile::road ? " road tiles built for " :
+                                    " zone tiles marked for ") +
                                    std::to_string(before - world.snapshot().treasury) + " funds.";
                         feedback_until = SDL_GetTicks() + 2500;
                     }
@@ -672,6 +788,8 @@ int main(int argc, char** argv) {
                                     world.set_giving_policy(static_cast<grace::GivingPolicy>(choice));
                                 if (my >= 340 && my < 374)
                                     world.set_service_budget(static_cast<grace::ServiceBudget>(choice));
+                                if (my >= 430 && my < 464)
+                                    world.set_tax_policy(static_cast<grace::TaxPolicy>(choice));
                             }
                         }
                     }
@@ -686,34 +804,43 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (event.button.button == SDL_BUTTON_LEFT && my >= 17 && my < 59 &&
-                    mx >= margin && mx < margin + 5 * 52) {
+                    mx >= margin && mx < margin + static_cast<int>(tools.size()) * 52) {
                     const int tool = static_cast<int>((mx - margin) / 52);
-                    if (mx - margin - tool * 52 < 44) selected = tools[static_cast<std::size_t>(tool)];
+                    if (mx - margin - tool * 52 < 44) {
+                        selected = tools[static_cast<std::size_t>(tool)];
+                        painting_tiles = false;
+                    }
                 }
                 int x, y;
                 if (camera.tile_at(mx, my, x, y)) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         const auto error = world.placement_error(x, y, selected);
-                        if (selected == grace::Tile::road &&
-                            world.tile(x, y) == grace::Tile::road) {
-                            painting_roads = true;
+                        if ((selected == grace::Tile::road || is_zone(selected)) &&
+                            world.tile(x, y) == selected) {
+                            painting_tiles = true;
                             paint_x = x;
                             paint_y = y;
-                            feedback = "Hold and drag to extend this road.";
+                            feedback = selected == grace::Tile::road
+                                ? "Hold and drag to extend this road."
+                                : "Hold and drag to extend this zone.";
                         } else if (error == grace::PlacementError::none) {
                             const int price = world.cost_at(x, y, selected);
                             world.place(x, y, selected);
-                            if (selected == grace::Tile::road) {
-                                painting_roads = true;
+                            if (selected == grace::Tile::road || is_zone(selected)) {
+                                painting_tiles = true;
                                 paint_x = x;
                                 paint_y = y;
                             }
+                            const bool zoning = selected == grace::Tile::residential_zone ||
+                                selected == grace::Tile::commercial_zone ||
+                                selected == grace::Tile::industrial_zone;
                             feedback = std::string(grace::World::name(selected)) +
-                                " built for " + std::to_string(price) + " funds.";
+                                (zoning ? " marked for " : " built for ") +
+                                std::to_string(price) + " funds.";
                         } else feedback = placement_message(error);
                     }
                     if (event.button.button == SDL_BUTTON_RIGHT) {
-                        painting_roads = false;
+                        painting_tiles = false;
                         if (world.remove(x, y)) feedback = "Tile cleared. Disconnected areas are marked red.";
                         else feedback = (x == 12 && y == 8)
                             ? "The chapel's starting road cannot be removed."
@@ -741,7 +868,7 @@ int main(int argc, char** argv) {
                 paused = true;
                 budget_open = false;
                 dragging = false;
-                painting_roads = false;
+                painting_tiles = false;
                 feedback = "BANKRUPT: weekly expenses emptied the treasury. Press Backspace for a new town.";
                 feedback_until = now + 10000;
             }
@@ -763,12 +890,12 @@ int main(int argc, char** argv) {
         }
         const auto state = world.snapshot();
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-        SDL_RenderDebugTextFormat(renderer, 300, 14, "WEEK %d %s  PEOPLE %d/%d  JOY %d",
+        SDL_RenderDebugTextFormat(renderer, 400, 14, "WEEK %d %s  PEOPLE %d/%d  JOY %d",
                                   state.week, state.bankrupt ? "BANKRUPT" :
                                   !simulation_started ? "SETUP" : paused ? "PAUSED" : "RUNNING",
                                   state.population,
                                   state.capacity, state.happiness);
-        SDL_RenderDebugTextFormat(renderer, 300, 34,
+        SDL_RenderDebugTextFormat(renderer, 400, 34,
             "FUNDS %d  IN %d  OUT %d  NET %+d  |  %s (%d)",
             state.treasury, state.weekly_income, state.weekly_upkeep,
             state.weekly_income - state.weekly_upkeep,
@@ -781,7 +908,7 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, margin, 76,
             state.bankrupt
                 ? "BANKRUPT  |  CLICK NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS  B OPENS BUDGET"
-                : "SPACE PLAY/PAUSE  B BUDGET  G GIVING  O SERVICES  1-5 BUILD  E/F EVENTS  RIGHT CLEAR  WASD PAN");
+                : "SPACE PLAY/PAUSE  B BUDGET  T TAX  1-7 ZONE/BUILD  E/F EVENTS  RIGHT CLEAR  WASD PAN");
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
@@ -798,6 +925,9 @@ int main(int argc, char** argv) {
         }
         int hover_x = -1, hover_y = -1;
         const bool over_tile = camera.tile_at(mx, my, hover_x, hover_y);
+        const bool stroke_start = over_tile &&
+            (selected == grace::Tile::road || is_zone(selected)) &&
+            world.tile(hover_x, hover_y) == selected;
         const bool service_view = selected == grace::Tile::chapel ||
                                   selected == grace::Tile::pantry;
         const bool preview_valid = service_view && over_tile &&
@@ -828,7 +958,7 @@ int main(int argc, char** argv) {
             tint(renderer, ghost, {252, 210, 110}, 65);
         }
         if (over_tile) {
-            const Color preview = world.can_place(hover_x, hover_y, selected)
+            const Color preview = (world.can_place(hover_x, hover_y, selected) || stroke_start)
                 ? Color{253, 229, 153} : Color{225, 91, 83};
                 SDL_SetRenderDrawColor(renderer, preview.r, preview.g, preview.b, 255);
                 auto rect = camera.tile_rect(hover_x, hover_y);
@@ -837,12 +967,13 @@ int main(int argc, char** argv) {
         }
         SDL_SetRenderClipRect(renderer, nullptr);
         if (budget_open) {
-            fill(renderer, {170, 155, 660, 270}, {29, 45, 46});
+            fill(renderer, {170, 155, 660, 370}, {29, 45, 46});
             SDL_SetRenderDrawColor(renderer, 246, 221, 154, 255);
-            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O");
+            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O / T");
             SDL_RenderDebugTextFormat(renderer, 205, 198,
-                "IN: grant %d + giving %d = %d", state.grant_income,
-                state.giving_income, state.weekly_income);
+                "IN: grant %d + giving %d + business tax %d = %d",
+                state.grant_income, state.giving_income,
+                state.tax_income, state.weekly_income);
             SDL_RenderDebugTextFormat(renderer, 205, 216,
                 "OUT: roads/homes %d + services %d + community %d = %d    NET %+d",
                 state.building_upkeep, state.service_upkeep,
@@ -851,6 +982,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, 205, 237, "GIVING: more income can strain household wellbeing");
             constexpr std::array<const char*, 3> giving_labels{"GENTLE", "BALANCED", "AMBITIOUS"};
             constexpr std::array<const char*, 3> service_labels{"LEAN", "BALANCED", "GENEROUS"};
+            constexpr std::array<const char*, 3> tax_labels{"LOW", "BALANCED", "HIGH"};
             for (int choice = 0; choice < 3; ++choice) {
                 const float left = 205.0f + choice * 205.0f;
                 fill(renderer, {left, 250, 185, 34},
@@ -859,16 +991,24 @@ int main(int argc, char** argv) {
                 fill(renderer, {left, 340, 185, 34},
                      static_cast<int>(state.service_budget) == choice
                          ? Color{120, 106, 62} : Color{65, 80, 78});
+                fill(renderer, {left, 430, 185, 34},
+                     static_cast<int>(state.tax_policy) == choice
+                         ? Color{120, 106, 62} : Color{65, 80, 78});
                 SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
                 SDL_RenderDebugText(renderer, left + 12, 262, giving_labels[choice]);
                 SDL_RenderDebugText(renderer, left + 12, 352, service_labels[choice]);
+                SDL_RenderDebugText(renderer, left + 12, 442, tax_labels[choice]);
             }
             SDL_RenderDebugText(renderer, 205, 287,
                 "GENTLE 1/RES +1 NEEDS   BALANCED 1.5/RES   AMBITIOUS 2/RES -3 NEEDS");
             SDL_RenderDebugText(renderer, 205, 305, "SERVICES: higher upkeep improves care and belonging");
             SDL_RenderDebugText(renderer, 205, 377,
                 "LEAN HALF COST +3 NEEDS   BALANCED +7   GENEROUS DOUBLE COST +11");
-            SDL_RenderDebugText(renderer, 205, 393,
+            SDL_RenderDebugText(renderer, 205, 398,
+                "BUSINESS TAX: lower rates attract shops and workshops");
+            SDL_RenderDebugText(renderer, 205, 472,
+                "LOW: LESS REVENUE, MORE GROWTH    HIGH: MORE REVENUE, LESS GROWTH");
+            SDL_RenderDebugText(renderer, 205, 501,
                 state.bankrupt ? "BANKRUPT - BACKSPACE STARTS A NEW TOWN" :
                 !simulation_started ? "SETUP - BUILD NOW, THEN PRESS SPACE TO START CASHFLOW" :
                 "A NEGATIVE TREASURY AT WEEK END ENDS THIS TOWN");
@@ -903,7 +1043,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, 329, 481,
                 "BACKSPACE: NEW TOWN    B: BUDGET");
         }
-        fill(renderer, {0, static_cast<float>(header + map_height), window_width, 76},
+        fill(renderer, {0, static_cast<float>(header + map_height), window_width, 118},
              {34, 51, 55});
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
         if (service_view) {
@@ -929,6 +1069,16 @@ int main(int argc, char** argv) {
         std::string hint = now < feedback_until ? feedback :
             (over_tile ? placement_message(world.placement_error(hover_x, hover_y, selected)) :
                          town_advice(world));
+        if (now >= feedback_until && over_tile && is_zone(selected) &&
+            world.can_place(hover_x, hover_y, selected)) {
+            const int demand = selected == grace::Tile::residential_zone
+                ? state.residential_demand : selected == grace::Tile::commercial_zone
+                    ? state.commercial_demand : state.industrial_demand;
+            hint = std::string(grace::World::name(selected)) + ": costs " +
+                   std::to_string(world.cost_at(hover_x, hover_y, selected)) +
+                   ", demand " + std::to_string(demand) +
+                   "/100. Needs a connected road and 25 demand to develop.";
+        }
         if (now >= feedback_until && over_tile && world.can_place(hover_x, hover_y, selected) &&
             world.terrain(hover_x, hover_y) == grace::Terrain::woods)
             hint = "Woods will be cleared: +10 funds. Total " +
@@ -940,6 +1090,27 @@ int main(int argc, char** argv) {
                    ", care " + std::to_string(needs.care) +
                    (world.is_connected(hover_x, hover_y) ? "." : ". Road disconnected!");
         }
+        if (now >= feedback_until && over_tile) {
+            const auto hovered = world.tile(hover_x, hover_y);
+            if (hovered == grace::Tile::residential_zone ||
+                hovered == grace::Tile::commercial_zone ||
+                hovered == grace::Tile::industrial_zone) {
+                const int demand = hovered == grace::Tile::residential_zone
+                    ? state.residential_demand : hovered == grace::Tile::commercial_zone
+                        ? state.commercial_demand : state.industrial_demand;
+                hint = std::string(grace::World::name(hovered)) +
+                    (world.is_connected(hover_x, hover_y)
+                        ? demand >= 25 ? ": ready to develop next week." :
+                            ": waiting for demand to reach 25."
+                        : ": waiting for a connected road.");
+            } else if (hovered == grace::Tile::commercial ||
+                       hovered == grace::Tile::industrial) {
+                hint = std::string(grace::World::name(hovered)) +
+                    (world.is_connected(hover_x, hover_y)
+                        ? ": provides jobs and business tax revenue."
+                        : ": disconnected from the road network.");
+            }
+        }
         if (now >= feedback_until && over_tile &&
             (world.tile(hover_x, hover_y) == grace::Tile::chapel ||
              world.tile(hover_x, hover_y) == grace::Tile::pantry) &&
@@ -950,7 +1121,8 @@ int main(int argc, char** argv) {
             !preview->is_active_service(hover_x, hover_y))
             hint = "This building would lack volunteers. Grow the town or press V to change priority.";
         if (now >= feedback_until && !over_tile &&
-            my >= 17 && my < 59 && mx >= margin && mx < margin + 5 * 52) {
+            my >= 17 && my < 59 && mx >= margin &&
+            mx < margin + static_cast<int>(tools.size()) * 52) {
             const int tool = static_cast<int>((mx - margin) / 52);
             if (mx - margin - tool * 52 < 44) {
                 const auto type = tools[static_cast<std::size_t>(tool)];
@@ -959,6 +1131,24 @@ int main(int argc, char** argv) {
             }
         }
         SDL_RenderDebugText(renderer, margin, header + map_height + 51, hint.c_str());
+        auto demand_bar = [&](int x, const char* label, int demand, Color color) {
+            const float y = static_cast<float>(header + map_height + 79);
+            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+            SDL_RenderDebugText(renderer, static_cast<float>(x), y, label);
+            fill(renderer, {static_cast<float>(x + 36), y, 190, 10}, {70, 85, 86});
+            fill(renderer, {static_cast<float>(x + 36), y,
+                            190.0f * demand / 100.0f, 10}, color);
+            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+            SDL_RenderDebugTextFormat(renderer, static_cast<float>(x + 236), y,
+                                      "%3d", demand);
+        };
+        demand_bar(20, "RES", state.residential_demand, {105, 184, 114});
+        demand_bar(340, "COM", state.commercial_demand, {91, 173, 187});
+        demand_bar(660, "IND", state.industrial_demand, {218, 174, 103});
+        SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
+        SDL_RenderDebugTextFormat(renderer, margin, header + map_height + 99,
+            "TAX %s (T)  |  SHOPS %d  WORKSHOPS %d  JOBS %d  |  ZONES NEED ROAD ACCESS AND DEMAND TO DEVELOP",
+            tax_name(state.tax_policy), state.shops, state.workshops, state.jobs);
         if (capture) {
             SDL_Surface* frame = SDL_RenderReadPixels(renderer, nullptr);
             if (!frame || !SDL_SavePNG(frame, argv[2])) {
@@ -978,6 +1168,15 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "Bankruptcy screen restart failed\n");
             exit_status = 1;
         }
+        if (zone_smoke && (world.tile(9, 7) != grace::Tile::residential_zone ||
+            world.tile(8, 7) != grace::Tile::residential_zone ||
+            world.tile(11, 9) != grace::Tile::commercial_zone ||
+            world.tile(13, 9) != grace::Tile::industrial_zone ||
+            world.snapshot().tax_policy != grace::TaxPolicy::high ||
+            world.snapshot().treasury != 217)) {
+            std::fprintf(stderr, "Zoning toolbar or tax control failed\n");
+            exit_status = 1;
+        }
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
                 if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;
@@ -989,7 +1188,7 @@ int main(int argc, char** argv) {
             if (exit_status != 0)
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
-        if (smoke || capture || drag_smoke || bankrupt_smoke ||
+        if (smoke || capture || drag_smoke || zone_smoke || bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;
         SDL_Delay(16);

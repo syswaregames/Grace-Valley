@@ -80,6 +80,17 @@ int main() {
         return 11;
     report("costly budget", costly_budget);
 
+    grace::World zoned_town;
+    if (!build(zoned_town, 9, 7, grace::Tile::residential_zone) ||
+        !build(zoned_town, 11, 9, grace::Tile::commercial_zone) ||
+        !build(zoned_town, 13, 9, grace::Tile::industrial_zone) ||
+        !build(zoned_town, 14, 9, grace::Tile::park) ||
+        !run_weeks(zoned_town, 12)) return 12;
+    report("zoned town", zoned_town);
+    if (zoned_town.snapshot().bankrupt || zoned_town.snapshot().jobs < 10 ||
+        zoned_town.snapshot().tax_income <= 0 || zoned_town.snapshot().capacity < 8)
+        return 12;
+
     if (!run_weeks(compact, 456) || !run_weeks(spread, 456)) return 7;
     report("compact long run", compact);
     report("spread long run", spread);

@@ -14,18 +14,20 @@ The fictional setting draws on the social life of church communities: gatherings
 4. See who benefited, what it cost, and what new need appeared.
 5. Revise the plan and gradually form distinct neighborhoods.
 
-The current prototype implements a deliberately small version of this loop. New towns begin in Setup, with the weekly clock stopped until the player presses Play. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time. The player sets a voluntary giving policy and service spending; both affect weekly cashflow and household wellbeing. A negative treasury after a week ends the town in bankruptcy. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
+The current prototype implements a deliberately small version of this loop. New towns begin in Setup, with the weekly clock stopped until the player presses Play. Players mark residential, commercial, and industrial zones; connected plots develop when their demand is high enough. Shops and workshops provide jobs, tax revenue, and new housing demand. Parks and household wellbeing also attract residential development. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time. The player sets voluntary giving, service spending, and business tax; these choices affect weekly cashflow, wellbeing, and growth. A negative treasury after a week ends the town in bankruptcy. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
 
 ## Proposed systems
 
 | System | Player decision | Interesting consequence |
 | --- | --- | --- |
 | Roads and paths | Connect and shape neighborhoods | Access competes with green space and money |
-| Homes | Welcome new households | Population increases demand for care and gathering space |
+| Residential zones | Welcome new households | Jobs, parks, and wellbeing drive demand for homes |
+| Commercial zones | Make room for shops | Jobs and tax revenue grow with the resident base |
+| Industrial zones | Make room for workshops | More jobs and tax revenue, with a care and happiness tradeoff |
 | Chapels and halls | Choose location and capacity | Events create social ties but require volunteers and upkeep |
 | Pantry and care center | Cover neighborhoods with support | Helps vulnerable residents during shortages or storms |
 | Parks and gardens | Preserve quiet shared space | Raises wellbeing and can soften density |
-| Budget | Balance donations, grants, and upkeep | Expanding too quickly can strain the town |
+| Budget | Balance giving, business taxes, grants, and upkeep | Tax policy changes revenue and business growth |
 | Volunteer time | Assign limited help to events or services | Players choose what receives attention this season |
 | Seasons and events | Prepare for harvest, winter, festivals | Temporary needs make static layouts evolve |
 | Resident stories | Respond to specific households | Gives city scale decisions a human face |

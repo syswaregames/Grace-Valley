@@ -163,6 +163,7 @@ void World::update_households() {
             const int park = connected && near(x, y, Tile::park, 4)
                 ? (state_.service_budget == ServiceBudget::lean ? 1 :
                    state_.service_budget == ServiceBudget::generous ? 3 : 2) : 0;
+            const int pollution = connected && near(x, y, Tile::industrial, 3) ? 3 : 0;
             const bool gathering = state_.event_weeks_left > 0 &&
                                    state_.event_kind == EventKind::gathering;
             const bool food_drive = state_.event_weeks_left > 0 &&
@@ -176,7 +177,7 @@ void World::update_households() {
                 (home_has_service(x, y, Tile::pantry) ? service_gain : -5) +
                 giving_effect + park +
                 (food_drive ? 16 : 0) + (gathering ? 2 : 0) -
-                (connected ? 0 : 8), 0, 100);
+                (connected ? 0 : 8) - pollution, 0, 100);
         }
     }
 }
@@ -188,6 +189,9 @@ int World::cost(Tile type) {
     case Tile::chapel: return 80;
     case Tile::pantry: return 60;
     case Tile::park: return 25;
+    case Tile::residential_zone: return 8;
+    case Tile::commercial_zone: return 12;
+    case Tile::industrial_zone: return 15;
     default: return 0;
     }
 }
@@ -203,6 +207,11 @@ const char* World::name(Tile type) {
     case Tile::chapel: return "Chapel";
     case Tile::pantry: return "Pantry";
     case Tile::park: return "Park";
+    case Tile::residential_zone: return "Residential zone";
+    case Tile::commercial_zone: return "Commercial zone";
+    case Tile::industrial_zone: return "Industrial zone";
+    case Tile::commercial: return "Shop";
+    case Tile::industrial: return "Workshop";
     default: return "Meadow";
     }
 }
@@ -239,10 +248,14 @@ bool World::near(int x, int y, Tile type, int radius) const {
 PlacementError World::placement_error(int x, int y, Tile type) const {
     if (state_.bankrupt) return PlacementError::bankrupt;
     if (!inside(x, y)) return PlacementError::out_of_bounds;
-    if (type == Tile::meadow || tile(x, y) != Tile::meadow) return PlacementError::occupied;
+    if (type == Tile::meadow || type == Tile::commercial ||
+        type == Tile::industrial || tile(x, y) != Tile::meadow)
+        return PlacementError::occupied;
     if (terrain(x, y) == Terrain::water) return PlacementError::water;
     if (state_.treasury < cost_at(x, y, type)) return PlacementError::insufficient_funds;
-    if (type == Tile::road ? !has_adjacent_road(x, y) : !has_road(x, y))
+    const bool zone = type == Tile::residential_zone ||
+                      type == Tile::commercial_zone || type == Tile::industrial_zone;
+    if (!zone && (type == Tile::road ? !has_adjacent_road(x, y) : !has_road(x, y)))
         return type == Tile::road ? PlacementError::needs_connection : PlacementError::needs_road;
     return PlacementError::none;
 }
@@ -284,10 +297,15 @@ Snapshot World::evaluate() const {
     next.connected_homes = 0;
     next.connected_roads = 0;
     next.served_homes = 0;
+    next.shops = 0;
+    next.workshops = 0;
     int parks = 0;
+    int connected_parks = 0;
     int park_exposure = 0;
     int homes = 0;
     int roads = 0;
+    int all_shops = 0;
+    int all_workshops = 0;
     int chapels = 0;
     int pantries = 0;
     int total_belonging = 0;
@@ -314,7 +332,18 @@ Snapshot World::evaluate() const {
                 break;
             case Tile::chapel: ++chapels; break;
             case Tile::pantry: ++pantries; break;
-            case Tile::park: ++parks; break;
+            case Tile::park:
+                ++parks;
+                if (has_road(x, y)) ++connected_parks;
+                break;
+            case Tile::commercial:
+                ++all_shops;
+                if (has_road(x, y)) ++next.shops;
+                break;
+            case Tile::industrial:
+                ++all_workshops;
+                if (has_road(x, y)) ++next.workshops;
+                break;
             default: break;
             }
         }
@@ -324,8 +353,14 @@ Snapshot World::evaluate() const {
     next.giving_income = next.giving_policy == GivingPolicy::gentle
         ? next.population : next.giving_policy == GivingPolicy::ambitious
             ? next.population * 2 : next.population * 3 / 2;
-    next.weekly_income = next.grant_income + next.giving_income;
-    next.building_upkeep = homes + (roads + 2) / 3;
+    next.tax_income = next.tax_policy == TaxPolicy::low
+        ? next.shops * 3 + next.workshops * 5 :
+        next.tax_policy == TaxPolicy::high
+            ? next.shops * 9 + next.workshops * 14 :
+              next.shops * 6 + next.workshops * 9;
+    next.weekly_income = next.grant_income + next.giving_income + next.tax_income;
+    next.building_upkeep = homes + (roads + 2) / 3 +
+                           all_shops * 2 + all_workshops * 3;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
         ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
@@ -342,8 +377,37 @@ Snapshot World::evaluate() const {
                                          next.service_budget == ServiceBudget::generous ? 3 : 2), 10) +
                                     (next.event_weeks_left > 0 ?
                                         (next.event_kind == EventKind::gathering ? 8 : 4) : 0) -
-                                    (next.connected_homes < homes ? 10 : 0), 0, 100);
+                                    (next.connected_homes < homes ? 10 : 0) -
+                                    std::min(next.workshops * 2, 12), 0, 100);
+    next.jobs = next.shops * 4 + next.workshops * 6;
+    const int tax_growth = next.tax_policy == TaxPolicy::low ? 12 :
+                           next.tax_policy == TaxPolicy::high ? -18 : 0;
+    next.residential_demand = std::clamp(45 + next.jobs * 5 +
+        connected_parks * 8 + next.happiness / 5 - next.population * 3 -
+        (next.capacity - next.population) * 4, 0, 100);
+    next.commercial_demand = std::clamp(20 + next.population * 4 -
+        next.shops * 30 - next.workshops * 3 + tax_growth, 0, 100);
+    next.industrial_demand = std::clamp(15 + next.population * 3 +
+        next.shops * 5 - next.workshops * 35 + tax_growth, 0, 100);
     return next;
+}
+
+void World::develop_zones() {
+    auto develop_one = [&](Tile zone, Tile building, int demand) {
+        if (demand < 25) return;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (tile(x, y) == zone && has_road(x, y)) {
+                    tiles_[index(x, y)] = building;
+                    if (building == Tile::home) needs_[index(x, y)] = HouseholdNeeds{};
+                    return;
+                }
+            }
+        }
+    };
+    develop_one(Tile::residential_zone, Tile::home, state_.residential_demand);
+    develop_one(Tile::commercial_zone, Tile::commercial, state_.commercial_demand);
+    develop_one(Tile::industrial_zone, Tile::industrial, state_.industrial_demand);
 }
 
 void World::advance_week() {
@@ -361,6 +425,8 @@ void World::advance_week() {
     state_.population = std::min(state_.capacity, state_.population + arrival);
     state_ = evaluate();
     update_households();
+    state_ = evaluate();
+    develop_zones();
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
     rebuild_staffing();
@@ -383,6 +449,12 @@ void World::set_giving_policy(GivingPolicy policy) {
 void World::set_service_budget(ServiceBudget budget) {
     if (state_.bankrupt) return;
     state_.service_budget = budget;
+    state_ = evaluate();
+}
+
+void World::set_tax_policy(TaxPolicy policy) {
+    if (state_.bankrupt) return;
+    state_.tax_policy = policy;
     state_ = evaluate();
 }
 

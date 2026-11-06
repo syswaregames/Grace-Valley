@@ -5,7 +5,10 @@
 
 namespace grace {
 
-enum class Tile : std::uint8_t { meadow, road, home, chapel, pantry, park };
+enum class Tile : std::uint8_t {
+    meadow, road, home, chapel, pantry, park,
+    residential_zone, commercial_zone, industrial_zone, commercial, industrial
+};
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
     none, out_of_bounds, occupied, water, insufficient_funds, needs_road, needs_connection, bankrupt
@@ -16,6 +19,7 @@ enum class EventError : std::uint8_t {
 enum class EventKind : std::uint8_t { gathering, food_drive };
 enum class GivingPolicy : std::uint8_t { gentle, balanced, ambitious };
 enum class ServiceBudget : std::uint8_t { lean, balanced, generous };
+enum class TaxPolicy : std::uint8_t { low, balanced, high };
 
 struct HouseholdNeeds {
     int belonging = 60;
@@ -32,6 +36,7 @@ struct Snapshot {
     int weekly_upkeep = 0;
     int grant_income = 0;
     int giving_income = 0;
+    int tax_income = 0;
     int building_upkeep = 0;
     int service_upkeep = 0;
     int community_upkeep = 0;
@@ -44,6 +49,12 @@ struct Snapshot {
     int volunteers_used = 0;
     int active_chapels = 0;
     int active_pantries = 0;
+    int jobs = 0;
+    int shops = 0;
+    int workshops = 0;
+    int residential_demand = 0;
+    int commercial_demand = 0;
+    int industrial_demand = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
     int event_cooldown = 0;
@@ -52,6 +63,7 @@ struct Snapshot {
     bool bankrupt = false;
     GivingPolicy giving_policy = GivingPolicy::balanced;
     ServiceBudget service_budget = ServiceBudget::balanced;
+    TaxPolicy tax_policy = TaxPolicy::balanced;
 };
 
 class World {
@@ -79,6 +91,7 @@ public:
     void set_care_priority(bool enabled);
     void set_giving_policy(GivingPolicy policy);
     void set_service_budget(ServiceBudget budget);
+    void set_tax_policy(TaxPolicy policy);
     EventError can_host_event(EventKind kind = EventKind::gathering) const;
     EventError host_event(EventKind kind = EventKind::gathering);
     void advance_week();
@@ -101,6 +114,7 @@ private:
     void rebuild_connections();
     void rebuild_staffing();
     void update_households();
+    void develop_zones();
     bool near(int x, int y, Tile type, int radius) const;
     Snapshot evaluate() const;
 };
