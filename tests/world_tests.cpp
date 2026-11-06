@@ -58,6 +58,10 @@ int main() {
     grace::World business;
     assert(business.place(11, 9, grace::Tile::commercial_zone));
     assert(business.place(13, 9, grace::Tile::industrial_zone));
+    assert(business.snapshot().commercial_demand < 25);
+    business.advance_week();
+    assert(business.tile(11, 9) == grace::Tile::commercial_zone);
+    assert(business.tile(13, 9) == grace::Tile::industrial_zone);
     business.advance_week();
     assert(business.tile(11, 9) == grace::Tile::commercial);
     assert(business.tile(13, 9) == grace::Tile::industrial_zone);
@@ -84,6 +88,16 @@ int main() {
     assert(business.remove(11, 8));
     assert(business.snapshot().shops == 0);
     assert(business.snapshot().jobs == 6);
+    grace::World vacant;
+    assert(vacant.place(11, 9, grace::Tile::commercial_zone));
+    vacant.set_tax_policy(grace::TaxPolicy::high);
+    for (int week = 0; week < 6; ++week) vacant.advance_week();
+    assert(vacant.tile(11, 9) == grace::Tile::commercial_zone);
+    assert(vacant.snapshot().commercial_demand < 25);
+    vacant.set_tax_policy(grace::TaxPolicy::low);
+    assert(vacant.snapshot().commercial_demand >= 25);
+    vacant.advance_week();
+    assert(vacant.tile(11, 9) == grace::Tile::commercial);
     assert(!world.place(-1, 0, grace::Tile::road));
     assert(!world.place(0, 0, grace::Tile::home));
     assert(world.placement_error(0, 0, grace::Tile::road) ==

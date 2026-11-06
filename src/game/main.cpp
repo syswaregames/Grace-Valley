@@ -72,6 +72,13 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
     auto shape = [&](float dx, float dy, float w, float h, Color color) {
         fill(renderer, {x + dx, y + dy, w, h}, color);
     };
+    auto zone_icon = [&](Color border, Color lot, char symbol) {
+        shape(3, 2, 28, 28, border);
+        shape(6, 5, 22, 22, lot);
+        SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+        const char label[]{symbol, '\0'};
+        SDL_RenderDebugText(renderer, x + 13, y + 12, label);
+    };
     shape(0, 0, 34, 32, {116, 159, 105});
     switch (type) {
     case grace::Tile::road:
@@ -81,24 +88,19 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
         shape(19, 16, 7, 2, {231, 216, 171});
         break;
     case grace::Tile::home:
-    case grace::Tile::residential_zone:
         shape(7, 13, 20, 16, {242, 221, 177});
         shape(4, 9, 26, 6, {154, 81, 66});
         shape(15, 20, 6, 9, {111, 81, 66});
         shape(22, 6, 3, 5, {111, 81, 66});
         break;
+    case grace::Tile::residential_zone:
+        zone_icon({105, 184, 114}, {117, 157, 102}, 'R');
+        break;
     case grace::Tile::commercial_zone:
-        shape(5, 13, 24, 16, {203, 226, 224});
-        shape(4, 9, 26, 7, {61, 126, 139});
-        shape(8, 9, 5, 7, {239, 218, 161});
-        shape(19, 9, 5, 7, {239, 218, 161});
-        shape(14, 20, 7, 9, {61, 126, 139});
+        zone_icon({91, 173, 187}, {115, 158, 146}, 'C');
         break;
     case grace::Tile::industrial_zone:
-        shape(5, 16, 25, 13, {178, 151, 121});
-        shape(4, 12, 26, 5, {97, 91, 86});
-        shape(22, 4, 5, 9, {125, 102, 88});
-        shape(9, 20, 5, 5, {239, 218, 161});
+        zone_icon({218, 174, 103}, {158, 146, 108}, 'I');
         break;
     case grace::Tile::chapel:
         shape(6, 14, 22, 15, {245, 238, 211});
@@ -204,6 +206,12 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
     auto shape = [&](float rx, float ry, float width, float height, Color color) {
         fill(renderer, {px + rx * scale, py + ry * scale, width * scale, height * scale}, color);
     };
+    auto vacant_zone = [&](Color border, Color lot, const char* label) {
+        shape(3, 3, 34, 34, border);
+        shape(6, 6, 28, 28, lot);
+        SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+        SDL_RenderDebugText(renderer, px + 16 * scale, py + 16 * scale, label);
+    };
     const Color ground = terrain == grace::Terrain::water ? Color{74, 139, 166} :
         terrain == grace::Terrain::woods ? Color{82, 132, 82} :
         ((x + y) % 2 == 0) ? Color{123, 166, 102} : Color{129, 173, 107};
@@ -260,22 +268,13 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(17, 23, 7, 11, {111, 81, 66});
         break;
     case grace::Tile::residential_zone:
-        shape(3, 3, 34, 34, {161, 177, 113});
-        shape(10, 18, 20, 15, {225, 215, 172});
-        shape(8, 14, 24, 5, {154, 81, 66});
+        vacant_zone({105, 184, 114}, {117, 157, 102}, "R");
         break;
     case grace::Tile::commercial_zone:
-        shape(3, 3, 34, 34, {102, 155, 164});
-        shape(8, 17, 24, 16, {203, 226, 224});
-        shape(6, 11, 28, 8, {61, 126, 139});
-        shape(10, 11, 5, 8, {239, 218, 161});
-        shape(22, 11, 5, 8, {239, 218, 161});
+        vacant_zone({91, 173, 187}, {115, 158, 146}, "C");
         break;
     case grace::Tile::industrial_zone:
-        shape(3, 3, 34, 34, {166, 139, 110});
-        shape(7, 18, 26, 15, {178, 151, 121});
-        shape(6, 13, 28, 6, {97, 91, 86});
-        shape(24, 5, 5, 9, {125, 102, 88});
+        vacant_zone({218, 174, 103}, {158, 146, 108}, "I");
         break;
     case grace::Tile::commercial:
         shape(6, 13, 28, 22, {219, 224, 213});
@@ -1100,7 +1099,7 @@ int main(int argc, char** argv) {
                         ? state.commercial_demand : state.industrial_demand;
                 hint = std::string(grace::World::name(hovered)) +
                     (world.is_connected(hover_x, hover_y)
-                        ? demand >= 25 ? ": ready to develop next week." :
+                        ? demand >= 25 ? ": eligible for weekly development." :
                             ": waiting for demand to reach 25."
                         : ": waiting for a connected road.");
             } else if (hovered == grace::Tile::commercial ||

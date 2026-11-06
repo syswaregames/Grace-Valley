@@ -392,7 +392,7 @@ Snapshot World::evaluate() const {
     return next;
 }
 
-void World::develop_zones() {
+void World::develop_zones(const Snapshot& demand_at_start) {
     auto develop_one = [&](Tile zone, Tile building, int demand) {
         if (demand < 25) return;
         for (int y = 0; y < height; ++y) {
@@ -405,15 +405,16 @@ void World::develop_zones() {
             }
         }
     };
-    develop_one(Tile::residential_zone, Tile::home, state_.residential_demand);
-    develop_one(Tile::commercial_zone, Tile::commercial, state_.commercial_demand);
-    develop_one(Tile::industrial_zone, Tile::industrial, state_.industrial_demand);
+    develop_one(Tile::residential_zone, Tile::home, demand_at_start.residential_demand);
+    develop_one(Tile::commercial_zone, Tile::commercial, demand_at_start.commercial_demand);
+    develop_one(Tile::industrial_zone, Tile::industrial, demand_at_start.industrial_demand);
 }
 
 void World::advance_week() {
     if (state_.bankrupt) return;
     rebuild_staffing();
     state_ = evaluate();
+    const Snapshot demand_at_start = state_;
     state_.treasury += state_.weekly_income - state_.weekly_upkeep;
     if (state_.treasury < 0) {
         state_.bankrupt = true;
@@ -426,7 +427,7 @@ void World::advance_week() {
     state_ = evaluate();
     update_households();
     state_ = evaluate();
-    develop_zones();
+    develop_zones(demand_at_start);
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
     rebuild_staffing();

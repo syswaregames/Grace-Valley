@@ -38,7 +38,7 @@ Start a road stroke on a placeable tile or any existing road. Dragging builds ea
 
 ### Zoning and demand
 
-Mark residential, commercial, and industrial plots during Setup or while the simulation runs. Zoning has an upfront cost; a marked plot develops into a home, shop, or workshop when it touches the connected road network and its demand reaches 25. At most one plot of each kind develops per week. Empty zones can wait for demand or road access, and right click clears a zone or its finished building.
+Mark residential, commercial, and industrial plots during Setup or while the simulation runs. Zoning has an upfront cost, but it leaves a visibly vacant R/C/I lot. At the start of each week, the game uses the demand shown in the bars: a lot can develop into a home, shop, or workshop only when it touches the connected road network and its demand is at least 25. At most one lot of each kind develops per week. If demand or road access is missing, the lot stays empty. Right click clears a vacant zone or its finished building.
 
 The three bars below the map show **RES**, **COM**, and **IND** demand from 0 to 100. Shops provide four jobs and workshops provide six, increasing residential demand. Connected parks and household happiness also attract residents. More residents raise business demand. Workshops can lower nearby care and town happiness. Developed businesses pay tax and incur upkeep; disconnecting them stops their jobs and tax revenue while their upkeep remains.
 

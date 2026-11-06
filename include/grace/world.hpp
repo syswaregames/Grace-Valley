@@ -114,7 +114,7 @@ private:
     void rebuild_connections();
     void rebuild_staffing();
     void update_households();
-    void develop_zones();
+    void develop_zones(const Snapshot& demand_at_start);
     bool near(int x, int y, Tile type, int radius) const;
     Snapshot evaluate() const;
 };
