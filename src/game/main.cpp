@@ -315,10 +315,39 @@ void autoplay_step(grace::World& world) {
     }
 }
 
+struct RoadPaintResult { int added; int x; int y; };
+
+RoadPaintResult paint_road_segment(grace::World& world, int from_x, int from_y,
+                                   int target_x, int target_y) {
+    int x = from_x;
+    int y = from_y;
+    int added = 0;
+    auto passable = [&](int next_x, int next_y) {
+        return (world.tile(next_x, next_y) == grace::Tile::road &&
+                world.is_connected(next_x, next_y)) ||
+               world.can_place(next_x, next_y, grace::Tile::road);
+    };
+    while (x != target_x || y != target_y) {
+        const int dx = target_x - x;
+        const int dy = target_y - y;
+        const int step_x = dx > 0 ? 1 : -1;
+        const int step_y = dy > 0 ? 1 : -1;
+        const bool horizontal = dx != 0 && passable(x + step_x, y);
+        const bool vertical = dy != 0 && passable(x, y + step_y);
+        if (!horizontal && !vertical) break;
+        if (horizontal && (!vertical || std::abs(dx) >= std::abs(dy))) x += step_x;
+        else y += step_y;
+        if (world.tile(x, y) != grace::Tile::road &&
+            world.place(x, y, grace::Tile::road)) ++added;
+    }
+    return {added, x, y};
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
+    const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads);
@@ -363,6 +392,8 @@ int main(int argc, char** argv) {
     bool running = true;
     bool paused = false;
     bool dragging = false;
+    bool painting_roads = false;
+    int paint_x = 0, paint_y = 0;
     std::string feedback = "Welcome! Extend roads from the chapel, then build beside them.";
     Uint64 feedback_until = SDL_GetTicks() + 6000;
     Uint64 last_week = SDL_GetTicks();
@@ -372,6 +403,26 @@ int main(int argc, char** argv) {
     constexpr std::array<grace::Tile, 5> tools{
         grace::Tile::road, grace::Tile::home, grace::Tile::chapel,
         grace::Tile::pantry, grace::Tile::park};
+    if (drag_smoke) {
+        SDL_Event down{};
+        down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        down.button.button = SDL_BUTTON_LEFT;
+        down.button.x = margin + 8.5f * base_cell;
+        down.button.y = header + 9.5f * base_cell;
+        SDL_PushEvent(&down);
+        SDL_Event motion{};
+        motion.type = SDL_EVENT_MOUSE_MOTION;
+        motion.motion.x = margin + 13.5f * base_cell;
+        motion.motion.y = down.button.y;
+        motion.motion.xrel = 5 * base_cell;
+        SDL_PushEvent(&motion);
+        SDL_Event up{};
+        up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+        up.button.button = SDL_BUTTON_LEFT;
+        up.button.x = motion.motion.x;
+        up.button.y = motion.motion.y;
+        SDL_PushEvent(&up);
+    }
 
     while (running) {
         SDL_Event event;
@@ -379,6 +430,12 @@ int main(int argc, char** argv) {
             if (event.type == SDL_EVENT_QUIT) running = false;
             if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
                 event.button.button == SDL_BUTTON_MIDDLE) dragging = false;
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
+                event.button.button == SDL_BUTTON_LEFT) painting_roads = false;
+            if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+                dragging = false;
+                painting_roads = false;
+            }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
                 if (event.key.key == SDLK_ESCAPE) running = false;
                 if (event.key.key == SDLK_SPACE) paused = !paused;
@@ -409,6 +466,7 @@ int main(int argc, char** argv) {
                     camera.zoom_at(1.0f / 1.15f, window_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key >= SDLK_1 && event.key.key <= SDLK_5)
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
+                if (selected != grace::Tile::road) painting_roads = false;
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL) {
                 float mx, my;
@@ -422,6 +480,23 @@ int main(int argc, char** argv) {
                 SDL_RenderCoordinatesFromWindow(renderer, x, y, &x, &y);
                 SDL_RenderCoordinatesFromWindow(renderer, old_x, old_y, &old_x, &old_y);
                 camera.pan(x - old_x, y - old_y);
+            }
+            if (event.type == SDL_EVENT_MOUSE_MOTION && painting_roads &&
+                selected == grace::Tile::road) {
+                float mx = event.motion.x, my = event.motion.y;
+                SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                int x, y;
+                if (camera.tile_at(mx, my, x, y)) {
+                    const int before = world.snapshot().treasury;
+                    const auto result = paint_road_segment(world, paint_x, paint_y, x, y);
+                    paint_x = result.x;
+                    paint_y = result.y;
+                    if (result.added > 0) {
+                        feedback = std::to_string(result.added) + " road tiles built for " +
+                                   std::to_string(before - world.snapshot().treasury) + " funds.";
+                        feedback_until = SDL_GetTicks() + 2500;
+                    }
+                }
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
                 if (event.button.button == SDL_BUTTON_MIDDLE) {
@@ -440,9 +515,21 @@ int main(int argc, char** argv) {
                 if (camera.tile_at(mx, my, x, y)) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         const auto error = world.placement_error(x, y, selected);
-                        if (error == grace::PlacementError::none) {
+                        if (selected == grace::Tile::road &&
+                            world.tile(x, y) == grace::Tile::road &&
+                            world.is_connected(x, y)) {
+                            painting_roads = true;
+                            paint_x = x;
+                            paint_y = y;
+                            feedback = "Hold and drag to extend this road.";
+                        } else if (error == grace::PlacementError::none) {
                             const int price = world.cost_at(x, y, selected);
                             world.place(x, y, selected);
+                            if (selected == grace::Tile::road) {
+                                painting_roads = true;
+                                paint_x = x;
+                                paint_y = y;
+                            }
                             feedback = std::string(grace::World::name(selected)) +
                                 " built for " + std::to_string(price) + " funds.";
                         } else feedback = placement_message(error);
@@ -628,7 +715,14 @@ int main(int argc, char** argv) {
             if (frame) SDL_DestroySurface(frame);
         }
         SDL_RenderPresent(renderer);
-        if (smoke || capture ||
+        if (drag_smoke) {
+            for (int x = 8; x <= 13; ++x)
+                if (world.tile(x, 9) != grace::Tile::road) exit_status = 1;
+            if (world.snapshot().treasury != 230) exit_status = 1;
+            if (exit_status != 0)
+                std::fprintf(stderr, "Road drag smoke test failed\n");
+        }
+        if (smoke || capture || drag_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;
         SDL_Delay(16);

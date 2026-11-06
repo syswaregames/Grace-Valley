@@ -15,6 +15,7 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Host a community gathering | `E` (30 funds) |
 | Organize a food drive | `F` (25 funds) |
 | Place selected building | Left click |
+| Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
 | Remove a building | Right click |
 | Pause or resume | `Space` |
 | Advance one week while paused | `N` |
@@ -27,6 +28,7 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and active tool. The lower bar shows access and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
+Start a road stroke on a placeable tile or an existing connected road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles.
 
 With a chapel or pantry selected, **green** shows the reach of staffed buildings, **gold** shows new reach from a valid hovered placement, and **red markers** identify homes that still need the selected service or would lose it after the proposed placement. An **orange outline** on a connected service means it needs volunteers. The lower bar shows covered connected homes and the net change the proposed building would cause. The preview accounts for volunteer staffing; a placeable building may show no new coverage when it cannot be staffed. Service reach currently uses a five-tile Manhattan radius; road access is required, but travel along roads is not yet simulated.
 
