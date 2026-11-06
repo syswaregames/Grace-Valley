@@ -74,6 +74,11 @@ bool World::is_powered(int x, int y) const {
     return inside(x, y) && powered_[index(x, y)];
 }
 
+bool World::is_noise_polluted(int x, int y) const {
+    return inside(x, y) && tile(x, y) == Tile::home &&
+           near(x, y, Tile::industrial, 4);
+}
+
 int World::traffic_at(int x, int y) const {
     return inside(x, y) && tile(x, y) == Tile::road ? traffic_[index(x, y)] : 0;
 }
@@ -334,7 +339,8 @@ void World::update_households() {
             const int park = connected && near(x, y, Tile::park, 4)
                 ? (state_.service_budget == ServiceBudget::lean ? 1 :
                    state_.service_budget == ServiceBudget::generous ? 3 : 2) : 0;
-            const int pollution = connected && near(x, y, Tile::industrial, 3) ? 3 : 0;
+            const int pollution = connected && near(x, y, Tile::industrial, 4) ? 6 : 0;
+            const int noise = connected && near(x, y, Tile::industrial, 4) ? 3 : 0;
             const bool gathering = state_.event_weeks_left > 0 &&
                                    state_.event_kind == EventKind::gathering;
             const bool food_drive = state_.event_weeks_left > 0 &&
@@ -342,7 +348,7 @@ void World::update_households() {
             need.belonging = std::clamp(need.belonging +
                 (home_has_service(x, y, Tile::chapel) ? service_gain : -5) +
                 giving_effect + park +
-                (gathering ? 10 : 0) + (food_drive ? 1 : 0) -
+                (gathering ? 10 : 0) + (food_drive ? 1 : 0) - noise -
                 (connected ? 0 : 8), 0, 100);
             need.care = std::clamp(need.care +
                 (home_has_service(x, y, Tile::pantry) ? service_gain : -5) +
@@ -500,6 +506,7 @@ Snapshot World::evaluate() const {
     next.commuters = 0;
     next.congested_roads = 0;
     next.peak_traffic = 0;
+    next.noise_affected_homes = 0;
     int parks = 0;
     int connected_parks = 0;
     int park_exposure = 0;
@@ -528,6 +535,7 @@ Snapshot World::evaluate() const {
                 break;
             case Tile::home:
                 ++homes;
+                if (is_noise_polluted(x, y)) ++next.noise_affected_homes;
                 next.power_demand += 1;
                 if (powered_[index(x, y)]) ++next.powered_demand;
                 else ++next.unpowered_buildings;
@@ -611,6 +619,7 @@ Snapshot World::evaluate() const {
         std::min(connected_parks * 3, 12) +
         std::min(next.served_homes * 2, 10) -
         std::min(next.congested_roads * 4, 28) -
+        std::min(next.noise_affected_homes * 5, 25) -
         std::min(next.unpowered_buildings * 6, 24) -
         (next.connected_homes < homes ? 10 : 0) -
         (next.weekly_upkeep > next.weekly_income ? 6 : 0), 0, 100);
@@ -619,7 +628,8 @@ Snapshot World::evaluate() const {
                            next.tax_policy == TaxPolicy::high ? -18 : 0;
     next.residential_demand = std::clamp(45 + next.jobs * 5 +
         connected_parks * 8 + next.happiness / 5 - next.population * 3 -
-        (next.capacity - next.population) * 4 + quality_effect / 2, 0, 100);
+        (next.capacity - next.population) * 4 + quality_effect / 2 -
+        std::min(next.noise_affected_homes * 8, 40), 0, 100);
     next.commercial_demand = std::clamp(20 + next.population * 4 -
         next.shops * 30 - next.workshops * 3 + tax_growth +
         quality_effect / 3, 0, 100);

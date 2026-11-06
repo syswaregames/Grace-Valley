@@ -265,6 +265,23 @@ int main() {
     business.set_tax_policy(grace::TaxPolicy::high);
     assert(business.snapshot().tax_income > normal_tax.tax_income);
     assert(business.snapshot().industrial_demand < low_tax.industrial_demand);
+    grace::World noisy_town;
+    grace::World quiet_town;
+    assert(noisy_town.place(11, 9, grace::Tile::power_plant));
+    assert(quiet_town.place(11, 9, grace::Tile::power_plant));
+    assert(noisy_town.place(14, 7, grace::Tile::industrial_zone));
+    assert(noisy_town.place(9, 7, grace::Tile::residential_zone));
+    assert(quiet_town.place(9, 7, grace::Tile::residential_zone));
+    for (int week = 0; week < 4; ++week) {
+        noisy_town.advance_week();
+        quiet_town.advance_week();
+    }
+    assert(noisy_town.tile(14, 7) == grace::Tile::industrial);
+    assert(noisy_town.is_noise_polluted(10, 7));
+    assert(noisy_town.snapshot().noise_affected_homes > 0);
+    assert(noisy_town.snapshot().city_score < quiet_town.snapshot().city_score);
+    assert(noisy_town.household_needs(10, 7).care <
+           quiet_town.household_needs(10, 7).care);
     assert(business.remove(11, 8));
     assert(business.snapshot().shops == 0);
     assert(business.snapshot().jobs == 6);

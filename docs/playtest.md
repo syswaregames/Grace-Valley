@@ -6,6 +6,7 @@ This is the remaining human check for M1. It measures clarity and pacing as well
 
 1. Start the current Debug build and set a 20-minute timer. In Setup, mark residential, commercial, and industrial plots beside connected roads. Build a power plant with tool `8`, then open the budget with `B` before pressing `Space`.
 2. Watch the three demand bars and confirm zoned plots develop into homes, shops, and workshops. Place a park and see whether residential demand responds.
+3. Place a residential plot within four tiles of a workshop, then let it develop. Confirm the home gets a purple **N** marker, a noise alert appears in the top bar, and care, City Score, and residential demand are lower than in a quieter part of town. Move or remove the workshop and confirm the exposure clears.
 3. Cycle business tax with `T`. Check whether the revenue and business demand tradeoff is clear.
 4. Place a pantry and inspect its gold coverage preview before clicking.
 5. Remove a road that serves homes or businesses, observe the access warnings and lost business activity, then reconnect it. Disconnect the plant and check that the amber outage badges appear and zones stop growing; restore power.

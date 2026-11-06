@@ -478,6 +478,11 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(29, 8, 6, 3, {255, 244, 205});
         shape(29, 10, 3, 5, {255, 244, 205});
     }
+    if (world.is_noise_polluted(x, y) && scale >= 0.85f) {
+        shape(1, 1, 12, 12, {143, 75, 142});
+        SDL_SetRenderDrawColor(renderer, 255, 237, 250, 255);
+        SDL_RenderDebugText(renderer, px + 3 * scale, py + 3 * scale, "N");
+    }
 }
 
 const char* placement_message(grace::PlacementError error) {
@@ -516,6 +521,10 @@ std::string town_advice(const grace::World& world) {
         return "No power: build a power plant (8) beside a connected road to grow zones.";
     if (state.unpowered_buildings > 0)
         return "Power shortage: add a connected plant. Amber lightning marks unpowered tiles.";
+    if (state.noise_affected_homes > 0)
+        return "Noise alert: workshops affect " +
+            std::to_string(state.noise_affected_homes) +
+            " homes. Move housing or industry farther apart.";
     if (state.congested_roads > 0)
         return "Traffic alert: amber/red roads are overloaded. Press U, then click a road to upgrade it.";
     int homes = 0;
@@ -1433,9 +1442,21 @@ int main(int argc, char** argv) {
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
                 : "SELECT TOOLS AT RIGHT  |  DRAG ROADS AND ZONES  |  RIGHT CLICK CLEAR  |  WASD PAN  WHEEL ZOOM");
-        if (state.congested_roads > 0 && !state.bankrupt) {
-            SDL_SetRenderDrawColor(renderer, 249, 161, 106, 255);
-            SDL_RenderDebugTextFormat(renderer, 836, 76, "TRAFFIC ALERT %d", state.congested_roads);
+        if ((state.congested_roads > 0 || state.noise_affected_homes > 0) &&
+            !state.bankrupt) {
+            SDL_SetRenderDrawColor(renderer,
+                state.noise_affected_homes > 0 ? 222 : 249,
+                state.noise_affected_homes > 0 ? 151 : 161,
+                state.noise_affected_homes > 0 ? 211 : 106, 255);
+            if (state.congested_roads > 0 && state.noise_affected_homes > 0)
+                SDL_RenderDebugTextFormat(renderer, 836, 76,
+                    "TRAFFIC %d  NOISE %d", state.congested_roads,
+                    state.noise_affected_homes);
+            else if (state.noise_affected_homes > 0)
+                SDL_RenderDebugTextFormat(renderer, 836, 76,
+                    "NOISE ALERT %d HOMES", state.noise_affected_homes);
+            else SDL_RenderDebugTextFormat(renderer, 836, 76,
+                    "TRAFFIC ALERT %d", state.congested_roads);
         }
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
@@ -1719,6 +1740,8 @@ int main(int argc, char** argv) {
                    (world.is_connected(hover_x, hover_y) ? "." : ". Road disconnected!");
             if (world.is_connected(hover_x, hover_y) &&
                 !world.is_powered(hover_x, hover_y)) hint += " No power!";
+            if (world.is_noise_polluted(hover_x, hover_y))
+                hint += " Noise from nearby workshops lowers care and City Score.";
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);

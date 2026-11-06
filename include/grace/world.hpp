@@ -64,6 +64,7 @@ struct Snapshot {
     int powered_demand = 0;
     int unpowered_buildings = 0;
     int commuters = 0;
+    int noise_affected_homes = 0;
     int congested_roads = 0;
     int peak_traffic = 0;
     int events_hosted = 0;
@@ -88,6 +89,7 @@ public:
     Terrain terrain(int x, int y) const;
     bool is_connected(int x, int y) const;
     bool is_powered(int x, int y) const;
+    bool is_noise_polluted(int x, int y) const;
     int traffic_at(int x, int y) const;
     int road_capacity(int x, int y) const;
     int road_level(int x, int y) const;
