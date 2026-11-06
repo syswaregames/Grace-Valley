@@ -22,6 +22,7 @@ enum class EventError : std::uint8_t {
 enum class EventKind : std::uint8_t { gathering, food_drive };
 enum class GivingPolicy : std::uint8_t { gentle, balanced, ambitious };
 enum class ServiceBudget : std::uint8_t { lean, balanced, generous };
+enum class RoadBudget : std::uint8_t { lean, balanced, generous };
 enum class TaxPolicy : std::uint8_t { low, balanced, high };
 
 struct HouseholdNeeds {
@@ -42,6 +43,7 @@ struct Snapshot {
     int giving_income = 0;
     int tax_income = 0;
     int building_upkeep = 0;
+    int road_upkeep = 0;
     int service_upkeep = 0;
     int community_upkeep = 0;
     int connected_homes = 0;
@@ -66,6 +68,8 @@ struct Snapshot {
     int commuters = 0;
     int noise_affected_homes = 0;
     int congested_roads = 0;
+    int bad_roads = 0;
+    int average_road_condition = 100;
     int peak_traffic = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
@@ -75,6 +79,7 @@ struct Snapshot {
     bool bankrupt = false;
     GivingPolicy giving_policy = GivingPolicy::balanced;
     ServiceBudget service_budget = ServiceBudget::balanced;
+    RoadBudget road_budget = RoadBudget::balanced;
     TaxPolicy tax_policy = TaxPolicy::balanced;
 };
 
@@ -93,6 +98,8 @@ public:
     int traffic_at(int x, int y) const;
     int road_capacity(int x, int y) const;
     int road_level(int x, int y) const;
+    int road_condition(int x, int y) const;
+    int bad_road_count() const;
     int next_road_upgrade_cost(int x, int y) const;
     static const char* road_level_name(int level);
     bool is_upgraded_road(int x, int y) const;
@@ -112,6 +119,7 @@ public:
     void set_care_priority(bool enabled);
     void set_giving_policy(GivingPolicy policy);
     void set_service_budget(ServiceBudget budget);
+    void set_road_budget(RoadBudget budget);
     void set_tax_policy(TaxPolicy policy);
     EventError can_host_event(EventKind kind = EventKind::gathering) const;
     EventError host_event(EventKind kind = EventKind::gathering);
@@ -129,6 +137,7 @@ private:
     std::vector<bool> connected_ = std::vector<bool>(width * height);
     std::vector<bool> powered_ = std::vector<bool>(width * height);
     std::vector<std::uint8_t> road_levels_ = std::vector<std::uint8_t>(width * height);
+    std::vector<std::uint8_t> road_condition_ = std::vector<std::uint8_t>(width * height, 100);
     std::vector<int> traffic_ = std::vector<int>(width * height);
     std::vector<bool> staffed_ = std::vector<bool>(width * height);
     std::vector<HouseholdNeeds> needs_ = std::vector<HouseholdNeeds>(width * height);

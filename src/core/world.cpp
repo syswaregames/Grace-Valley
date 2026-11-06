@@ -101,13 +101,27 @@ int World::traffic_at(int x, int y) const {
 }
 
 int World::road_capacity(int x, int y) const {
-    return inside(x, y) && tile(x, y) == Tile::road
-        ? road_capacities[road_levels_[index(x, y)]] : 0;
+    if (!inside(x, y) || tile(x, y) != Tile::road) return 0;
+    return std::max(1, road_capacities[road_levels_[index(x, y)]] *
+        static_cast<int>(road_condition_[index(x, y)]) / 100);
 }
 
 int World::road_level(int x, int y) const {
     return inside(x, y) && tile(x, y) == Tile::road
         ? road_levels_[index(x, y)] : -1;
+}
+
+int World::road_condition(int x, int y) const {
+    return inside(x, y) && tile(x, y) == Tile::road
+        ? road_condition_[index(x, y)] : 0;
+}
+
+int World::bad_road_count() const {
+    int count = 0;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            count += tile(x, y) == Tile::road && road_condition(x, y) < 60;
+    return count;
 }
 
 int World::next_road_upgrade_cost(int x, int y) const {
@@ -466,6 +480,7 @@ bool World::can_place(int x, int y, Tile type) const {
 bool World::place(int x, int y, Tile type) {
     if (!can_place(x, y, type)) return false;
     tiles_[index(x, y)] = type;
+    if (type == Tile::road) road_condition_[index(x, y)] = 100;
     state_.treasury -= cost_at(x, y, type);
     if (terrain_[index(x, y)] != Terrain::water)
         terrain_[index(x, y)] = Terrain::grass;
@@ -485,6 +500,7 @@ bool World::remove(int x, int y) {
         (x == anchor_x && y == anchor_y)) return false;
     tiles_[index(x, y)] = Tile::meadow;
     road_levels_[index(x, y)] = 0;
+    road_condition_[index(x, y)] = 100;
     needs_[index(x, y)] = HouseholdNeeds{};
     rebuild_connections();
     rebuild_power();
@@ -522,6 +538,8 @@ Snapshot World::evaluate() const {
     next.unpowered_buildings = 0;
     next.commuters = 0;
     next.congested_roads = 0;
+    next.bad_roads = bad_road_count();
+    next.average_road_condition = 0;
     next.peak_traffic = 0;
     next.noise_affected_homes = 0;
     int parks = 0;
@@ -536,6 +554,7 @@ Snapshot World::evaluate() const {
     int pantries = 0;
     int plants = 0;
     int road_upgrade_upkeep = 0;
+    int total_road_condition = 0;
     int total_belonging = 0;
     int total_care = 0;
     for (int y = 0; y < height; ++y) {
@@ -545,6 +564,7 @@ Snapshot World::evaluate() const {
                 ++roads;
                 bridges += terrain(x, y) == Terrain::water;
                 road_upgrade_upkeep += road_upkeep[road_levels_[index(x, y)]];
+                total_road_condition += road_condition_[index(x, y)];
                 if (connected_[index(x, y)]) ++next.connected_roads;
                 next.peak_traffic = std::max(next.peak_traffic, traffic_[index(x, y)]);
                 if (traffic_[index(x, y)] > road_capacity(x, y))
@@ -604,18 +624,21 @@ Snapshot World::evaluate() const {
             ? next.shops * 9 + next.workshops * 14 :
               next.shops * 6 + next.workshops * 9;
     next.weekly_income = next.grant_income + next.giving_income + next.tax_income;
-    next.building_upkeep = homes + (roads + 2) / 3 +
+    const int road_base_upkeep = (roads + 2) / 3 + bridges + road_upgrade_upkeep;
+    next.road_upkeep = next.road_budget == RoadBudget::lean
+        ? (road_base_upkeep + 1) / 2 : next.road_budget == RoadBudget::generous
+            ? road_base_upkeep * 2 : road_base_upkeep;
+    next.average_road_condition = roads == 0 ? 100 : total_road_condition / roads;
+    next.building_upkeep = homes +
                            all_shops * 2 + all_workshops * 3;
     next.building_upkeep += plants * 6;
-    next.building_upkeep += bridges;
-    next.building_upkeep += road_upgrade_upkeep;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
         ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
             ? base_services * 2 : base_services;
     next.community_upkeep = next.population / 2 +
                             next.population * next.population / 150;
-    next.weekly_upkeep = next.building_upkeep + next.service_upkeep +
+    next.weekly_upkeep = next.building_upkeep + next.road_upkeep + next.service_upkeep +
                          next.community_upkeep;
     next.belonging = homes == 0 ? 60 : total_belonging / homes;
     next.care = homes == 0 ? 60 : total_care / homes;
@@ -637,6 +660,7 @@ Snapshot World::evaluate() const {
         std::min(next.served_homes * 2, 10) -
         std::min(next.congested_roads * 4, 28) -
         std::min(next.noise_affected_homes * 5, 25) -
+        std::min(next.bad_roads * 2, 20) -
         std::min(next.unpowered_buildings * 6, 24) -
         (next.connected_homes < homes ? 10 : 0) -
         (next.weekly_upkeep > next.weekly_income ? 6 : 0), 0, 100);
@@ -686,6 +710,15 @@ void World::advance_week() {
         ++state_.week;
         return;
     }
+    for (std::size_t i = 0; i < tiles_.size(); ++i) {
+        if (tiles_[i] != Tile::road) continue;
+        if (state_.road_budget == RoadBudget::lean)
+            road_condition_[i] = static_cast<std::uint8_t>(
+                std::max(0, static_cast<int>(road_condition_[i]) - 12));
+        else if (state_.road_budget == RoadBudget::generous)
+            road_condition_[i] = static_cast<std::uint8_t>(
+                std::min(100, static_cast<int>(road_condition_[i]) + 8));
+    }
     const int arrival = (state_.happiness >= 55 ? 2 : 1) +
         (state_.event_weeks_left > 0 && state_.event_kind == EventKind::gathering ? 1 : 0);
     state_.population = std::min(state_.capacity, state_.population + arrival);
@@ -718,6 +751,12 @@ void World::set_giving_policy(GivingPolicy policy) {
 void World::set_service_budget(ServiceBudget budget) {
     if (state_.bankrupt) return;
     state_.service_budget = budget;
+    state_ = evaluate();
+}
+
+void World::set_road_budget(RoadBudget budget) {
+    if (state_.bankrupt) return;
+    state_.road_budget = budget;
     state_ = evaluate();
 }
 
@@ -754,12 +793,13 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 2\n";
+    output << "GRACE_VALLEY_WORLD 3\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
            << static_cast<int>(state_.giving_policy) << ' '
            << static_cast<int>(state_.service_budget) << ' '
+           << static_cast<int>(state_.road_budget) << ' '
            << static_cast<int>(state_.tax_policy) << ' '
            << state_.events_hosted << ' ' << state_.event_weeks_left << ' '
            << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << '\n';
@@ -768,6 +808,7 @@ bool World::save(std::ostream& output) const {
         output << static_cast<int>(tiles_[i]) << ' '
                << static_cast<int>(terrain_[i]) << ' '
                << static_cast<int>(road_levels_[i]) << ' '
+               << static_cast<int>(road_condition_[i]) << ' '
                << needs_[i].belonging << ' ' << needs_[i].care << '\n';
     return static_cast<bool>(output);
 }
@@ -776,13 +817,15 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version != 1 && version != 2))
+        (version < 1 || version > 3))
         return std::nullopt;
     World result;
-    int care_first, bankrupt, giving, services, tax, event_kind;
+    int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
     if (!(input >> result.state_.week >> result.state_.population >>
           result.state_.treasury >> care_first >> bankrupt >> giving >>
-          services >> tax >> result.state_.events_hosted >>
+          services)) return std::nullopt;
+    if (version >= 3 && !(input >> roads)) return std::nullopt;
+    if (!(input >> tax >> result.state_.events_hosted >>
           result.state_.event_weeks_left >> event_kind >> result.last_event_week_))
         return std::nullopt;
     if (result.state_.week < 1 || result.state_.week > 100000000 ||
@@ -790,6 +833,7 @@ std::optional<World> World::load(std::istream& input) {
         result.state_.treasury < -1000000000 || result.state_.treasury > 1000000000 ||
         care_first < 0 || care_first > 1 || bankrupt < 0 || bankrupt > 1 ||
         giving < 0 || giving > 2 || services < 0 || services > 2 ||
+        roads < 0 || roads > 2 ||
         tax < 0 || tax > 2 || result.state_.events_hosted < 0 ||
         result.state_.event_weeks_left < 0 || result.state_.event_weeks_left > 2 ||
         event_kind < 0 || event_kind > 1 ||
@@ -801,6 +845,7 @@ std::optional<World> World::load(std::istream& input) {
     result.state_.bankrupt = bankrupt != 0;
     result.state_.giving_policy = static_cast<GivingPolicy>(giving);
     result.state_.service_budget = static_cast<ServiceBudget>(services);
+    result.state_.road_budget = static_cast<RoadBudget>(roads);
     result.state_.tax_policy = static_cast<TaxPolicy>(tax);
     result.state_.event_kind = static_cast<EventKind>(event_kind);
     const int saved_population = result.state_.population;
@@ -811,11 +856,14 @@ std::optional<World> World::load(std::istream& input) {
         return std::nullopt;
     for (int y = 0; y < saved_height; ++y) {
         for (int x = 0; x < saved_width; ++x) {
-            int tile, terrain, upgraded, belonging, care;
-            if (!(input >> tile >> terrain >> upgraded >> belonging >> care) ||
+            int tile, terrain, upgraded, condition = 100, belonging, care;
+            if (!(input >> tile >> terrain >> upgraded) ||
+                (version >= 3 && !(input >> condition)) ||
+                !(input >> belonging >> care) ||
                 tile < 0 || tile > static_cast<int>(Tile::power_plant) ||
                 terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
                 upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
+                condition < 0 || condition > 100 ||
                 (upgraded && tile != static_cast<int>(Tile::road)) ||
                 belonging < 0 || belonging > 100 || care < 0 || care > 100 ||
                 (terrain == static_cast<int>(Terrain::water) &&
@@ -825,6 +873,7 @@ std::optional<World> World::load(std::istream& input) {
             result.tiles_[i] = static_cast<Tile>(tile);
             result.terrain_[i] = static_cast<Terrain>(terrain);
             result.road_levels_[i] = static_cast<std::uint8_t>(upgraded);
+            result.road_condition_[i] = static_cast<std::uint8_t>(condition);
             result.needs_[i] = {belonging, care};
         }
     }

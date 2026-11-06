@@ -322,11 +322,13 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         const int traffic = world.traffic_at(x, y);
         const int capacity = world.road_capacity(x, y);
         const bool busy = traffic > capacity;
-        const Color curb = level == 0 ? Color{188, 169, 135} :
+        const bool damaged = world.road_condition(x, y) < 60;
+        const Color curb = damaged ? Color{186, 105, 78} : level == 0 ? Color{188, 169, 135} :
             level == 1 ? Color{162, 184, 188} :
             level == 2 ? Color{171, 185, 149} : Color{210, 176, 107};
         const Color street = busy ? (traffic > capacity * 2
             ? Color{172, 76, 68} : Color{176, 120, 63}) :
+            damaged ? Color{119, 74, 66} :
             level == 0 ? Color{111, 111, 105} :
             level == 1 ? Color{76, 97, 110} :
             level == 2 ? Color{77, 91, 88} : Color{72, 77, 91};
@@ -390,6 +392,10 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
             SDL_SetRenderDrawColor(renderer, 250, 239, 205, 255);
             const char badge[]{level == 1 ? 'A' : level == 2 ? 'B' : 'T', '\0'};
             SDL_RenderDebugText(renderer, px + 2 * scale, py + 2 * scale, badge);
+        }
+        if (damaged && scale >= 0.85f) {
+            SDL_SetRenderDrawColor(renderer, 255, 220, 166, 255);
+            SDL_RenderDebugText(renderer, px + 29 * scale, py + 2 * scale, "!");
         }
         if (traffic > 0) {
             const int count = std::min(traffic, 2);
@@ -527,8 +533,10 @@ std::string town_advice(const grace::World& world) {
         return "Noise alert: workshops affect " +
             std::to_string(state.noise_affected_homes) +
             " homes. Move housing or industry farther apart.";
+    if (state.bad_roads > 0)
+        return "Roads are deteriorating. Open Budget (B) and restore road maintenance funding.";
     if (state.congested_roads > 0)
-        return "Traffic alert: amber/red roads are overloaded. Press U, then click a road to upgrade it.";
+        return "Traffic alert: amber/red roads are overloaded. Press U to upgrade roads or fund maintenance (B).";
     int homes = 0;
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
@@ -566,6 +574,14 @@ const char* service_name(grace::ServiceBudget budget) {
     switch (budget) {
     case grace::ServiceBudget::lean: return "LEAN";
     case grace::ServiceBudget::generous: return "GENEROUS";
+    default: return "BALANCED";
+    }
+}
+
+const char* road_budget_name(grace::RoadBudget budget) {
+    switch (budget) {
+    case grace::RoadBudget::lean: return "LEAN";
+    case grace::RoadBudget::generous: return "GENEROUS";
     default: return "BALANCED";
     }
 }
@@ -826,6 +842,13 @@ int main(int argc, char** argv) {
         const int next = (static_cast<int>(world.snapshot().service_budget) + 1) % 3;
         world.set_service_budget(static_cast<grace::ServiceBudget>(next));
         feedback = std::string("Services set to ") + service_name(world.snapshot().service_budget) + ".";
+        feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto cycle_road_budget = [&] {
+        const int next = (static_cast<int>(world.snapshot().road_budget) + 1) % 3;
+        world.set_road_budget(static_cast<grace::RoadBudget>(next));
+        feedback = std::string("Road maintenance set to ") +
+            road_budget_name(world.snapshot().road_budget) + ".";
         feedback_until = SDL_GetTicks() + 3500;
     };
     auto cycle_tax = [&] {
@@ -1160,6 +1183,7 @@ int main(int argc, char** argv) {
                 if (event.key.key == SDLK_G) cycle_giving();
                 if (event.key.key == SDLK_O) cycle_services();
                 if (event.key.key == SDLK_T) cycle_tax();
+                if (event.key.key == SDLK_M) cycle_road_budget();
                 if (event.key.key == SDLK_V) toggle_priority();
                 if (event.key.key == SDLK_E) start_event(grace::EventKind::gathering);
                 if (event.key.key == SDLK_F) start_event(grace::EventKind::food_drive);
@@ -1259,6 +1283,8 @@ int main(int argc, char** argv) {
                                     world.set_giving_policy(static_cast<grace::GivingPolicy>(choice));
                                 if (my >= 340 && my < 374)
                                     world.set_service_budget(static_cast<grace::ServiceBudget>(choice));
+                                if (my >= 520 && my < 554)
+                                    world.set_road_budget(static_cast<grace::RoadBudget>(choice));
                                 if (my >= 430 && my < 464)
                                     world.set_tax_policy(static_cast<grace::TaxPolicy>(choice));
                             }
@@ -1444,21 +1470,37 @@ int main(int argc, char** argv) {
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
                 : "SELECT TOOLS AT RIGHT  |  DRAG ROADS AND ZONES  |  RIGHT CLICK CLEAR  |  WASD PAN  WHEEL ZOOM");
-        if ((state.congested_roads > 0 || state.noise_affected_homes > 0) &&
+        if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
+             state.bad_roads > 0) &&
             !state.bankrupt) {
             SDL_SetRenderDrawColor(renderer,
                 state.noise_affected_homes > 0 ? 222 : 249,
                 state.noise_affected_homes > 0 ? 151 : 161,
                 state.noise_affected_homes > 0 ? 211 : 106, 255);
-            if (state.congested_roads > 0 && state.noise_affected_homes > 0)
+            if (state.congested_roads > 0 && state.noise_affected_homes > 0 &&
+                state.bad_roads > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "JAM %d BAD %d NOISE %d", state.congested_roads,
+                    state.bad_roads, state.noise_affected_homes);
+            else if (state.noise_affected_homes > 0 && state.bad_roads > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "BAD ROADS %d  NOISE %d", state.bad_roads,
+                    state.noise_affected_homes);
+            else if (state.congested_roads > 0 && state.bad_roads > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "JAM %d  BAD ROADS %d", state.congested_roads,
+                    state.bad_roads);
+            else if (state.congested_roads > 0 && state.noise_affected_homes > 0)
                 SDL_RenderDebugTextFormat(renderer, 836, 76,
                     "TRAFFIC %d  NOISE %d", state.congested_roads,
                     state.noise_affected_homes);
             else if (state.noise_affected_homes > 0)
                 SDL_RenderDebugTextFormat(renderer, 836, 76,
                     "NOISE ALERT %d HOMES", state.noise_affected_homes);
-            else SDL_RenderDebugTextFormat(renderer, 836, 76,
+            else if (state.congested_roads > 0) SDL_RenderDebugTextFormat(renderer, 836, 76,
                     "TRAFFIC ALERT %d", state.congested_roads);
+            else SDL_RenderDebugTextFormat(renderer, 836, 76,
+                    "BAD ROADS %d", state.bad_roads);
         }
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
@@ -1595,7 +1637,8 @@ int main(int argc, char** argv) {
                 }
             }
             SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 603,
-                "CITY %d  JAMS %d", state.city_score, state.congested_roads);
+                "CITY %d JAM %d BAD %d", state.city_score,
+                state.congested_roads, state.bad_roads);
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
@@ -1606,21 +1649,22 @@ int main(int argc, char** argv) {
                                 "OPTIONS ABOVE");
         }
         if (budget_open) {
-            fill(renderer, {170, 155, 660, 370}, {29, 45, 46});
+            fill(renderer, {170, 155, 660, 470}, {29, 45, 46});
             SDL_SetRenderDrawColor(renderer, 246, 221, 154, 255);
-            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O / T");
+            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O / T / M");
             SDL_RenderDebugTextFormat(renderer, 205, 198,
                 "IN: grant %d + giving %d + business tax %d = %d",
                 state.grant_income, state.giving_income,
                 state.tax_income, state.weekly_income);
             SDL_RenderDebugTextFormat(renderer, 205, 216,
-                "OUT: structures %d + services %d + community %d = %d    NET %+d",
-                state.building_upkeep, state.service_upkeep,
+                "OUT: buildings %d + roads %d + services %d + community %d = %d  NET %+d",
+                state.building_upkeep, state.road_upkeep, state.service_upkeep,
                 state.community_upkeep, state.weekly_upkeep,
                 state.weekly_income - state.weekly_upkeep);
             SDL_RenderDebugText(renderer, 205, 237, "GIVING: more income can strain household wellbeing");
             constexpr std::array<const char*, 3> giving_labels{"GENTLE", "BALANCED", "AMBITIOUS"};
             constexpr std::array<const char*, 3> service_labels{"LEAN", "BALANCED", "GENEROUS"};
+            constexpr std::array<const char*, 3> road_labels{"LEAN", "BALANCED", "GENEROUS"};
             constexpr std::array<const char*, 3> tax_labels{"LOW", "BALANCED", "HIGH"};
             for (int choice = 0; choice < 3; ++choice) {
                 const float left = 205.0f + choice * 205.0f;
@@ -1633,10 +1677,14 @@ int main(int argc, char** argv) {
                 fill(renderer, {left, 430, 185, 34},
                      static_cast<int>(state.tax_policy) == choice
                          ? Color{120, 106, 62} : Color{65, 80, 78});
+                fill(renderer, {left, 520, 185, 34},
+                     static_cast<int>(state.road_budget) == choice
+                         ? Color{120, 106, 62} : Color{65, 80, 78});
                 SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
                 SDL_RenderDebugText(renderer, left + 12, 262, giving_labels[choice]);
                 SDL_RenderDebugText(renderer, left + 12, 352, service_labels[choice]);
                 SDL_RenderDebugText(renderer, left + 12, 442, tax_labels[choice]);
+                SDL_RenderDebugText(renderer, left + 12, 532, road_labels[choice]);
             }
             SDL_RenderDebugText(renderer, 205, 287,
                 "GENTLE 1/RES +1 NEEDS   BALANCED 1.5/RES   AMBITIOUS 2/RES -3 NEEDS");
@@ -1647,10 +1695,17 @@ int main(int argc, char** argv) {
                 "BUSINESS TAX: lower rates attract shops and workshops");
             SDL_RenderDebugText(renderer, 205, 472,
                 "LOW: LESS REVENUE, MORE GROWTH    HIGH: MORE REVENUE, LESS GROWTH");
-            SDL_RenderDebugText(renderer, 205, 501,
+            SDL_RenderDebugText(renderer, 205, 602,
                 state.bankrupt ? "BANKRUPT - BACKSPACE STARTS A NEW TOWN" :
                 !simulation_started ? "SETUP - BUILD NOW, THEN PRESS SPACE TO START CASHFLOW" :
                 "A NEGATIVE TREASURY AT WEEK END ENDS THIS TOWN");
+            SDL_RenderDebugText(renderer, 205, 490,
+                "ROAD MAINTENANCE: low funding saves now; neglected roads lose capacity");
+            SDL_RenderDebugText(renderer, 205, 562,
+                "LEAN: HALF COST, ROADS WEAR   BALANCED: HOLD   GENEROUS: REPAIR + COST");
+            SDL_RenderDebugTextFormat(renderer, 205, 582,
+                "CONDITION %d%%  DAMAGED %d  |  CITY SCORE PENALTY UP TO 20",
+                state.average_road_condition, state.bad_roads);
         }
         if (state.bankrupt && !budget_open) {
             tint(renderer, {margin, header, map_width, map_height}, {12, 24, 28}, 175);
@@ -1755,6 +1810,7 @@ int main(int argc, char** argv) {
                     grace::World::road_level_name(road_level) +
                     " traffic " + std::to_string(world.traffic_at(hover_x, hover_y)) +
                     "/" + std::to_string(world.road_capacity(hover_x, hover_y)) +
+                    " condition " + std::to_string(world.road_condition(hover_x, hover_y)) + "%" +
                     (next_cost == 0 ? ". Highest level." :
                         ". Press U, then click to upgrade for " +
                         std::to_string(next_cost) + " funds.");

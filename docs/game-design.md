@@ -28,7 +28,7 @@ The current prototype implements a deliberately small version of this loop. New 
 | Chapels and halls | Choose location and capacity | Events create social ties but require volunteers and upkeep |
 | Pantry and care center | Cover neighborhoods with support | Helps vulnerable residents during shortages or storms |
 | Parks and gardens | Preserve quiet shared space | Raises wellbeing and can soften density |
-| Budget | Balance giving, business taxes, grants, and upkeep | Tax policy changes revenue and business growth |
+| Budget | Balance giving, business taxes, grants, service funding, and road maintenance | Low road funding saves money briefly but wears roads, reduces capacity, raises congestion, and lowers City Score |
 | Volunteer time | Assign limited help to events or services | Players choose what receives attention this season |
 | Seasons and events | Prepare for harvest, winter, festivals | Temporary needs make static layouts evolve |
 | Resident stories | Respond to specific households | Gives city scale decisions a human face |

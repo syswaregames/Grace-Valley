@@ -26,7 +26,8 @@ int main() {
     assert(start.weekly_income == 10);
     assert(start.weekly_upkeep == 8);
     assert(start.weekly_income == start.grant_income + start.giving_income);
-    assert(start.weekly_upkeep == start.building_upkeep + start.service_upkeep +
+    assert(start.weekly_upkeep == start.building_upkeep + start.road_upkeep +
+                                  start.service_upkeep +
                                   start.community_upkeep);
     grace::World bridge;
     for (int x : {16, 17}) assert(bridge.place(x, 8, grace::Tile::road));
@@ -119,28 +120,37 @@ int main() {
     assert(restored_commute->snapshot().city_score == commute.snapshot().city_score);
     assert(restored_commute->traffic_at(12, 8) == commute.traffic_at(12, 8));
     assert(restored_commute->is_upgraded_road(12, 8));
-    std::string legacy_text = saved_commute.str();
-    legacy_text.replace(legacy_text.find("GRACE_VALLEY_WORLD 2"),
-                        sizeof("GRACE_VALLEY_WORLD 2") - 1, "GRACE_VALLEY_WORLD 1");
-    std::stringstream legacy_save(legacy_text);
+    auto make_legacy_save = [&](bool old_map) {
+        std::stringstream source(saved_commute.str());
+        std::string magic;
+        int version, week, population, treasury, care_first, bankrupt;
+        int giving, services, road_budget, tax, events, event_weeks, event_kind, last_event;
+        int saved_width, saved_height;
+        source >> magic >> version >> week >> population >> treasury >> care_first >>
+            bankrupt >> giving >> services >> road_budget >> tax >> events >>
+            event_weeks >> event_kind >> last_event >> saved_width >> saved_height;
+        std::stringstream legacy;
+        legacy << "GRACE_VALLEY_WORLD " << (old_map ? 2 : 1) << '\n'
+               << week << ' ' << population << ' ' << treasury << ' ' << care_first
+               << ' ' << bankrupt << ' ' << giving << ' ' << services << ' '
+               << tax << ' ' << events << ' ' << event_weeks << ' ' << event_kind
+               << ' ' << last_event << '\n'
+               << (old_map ? "24 16\n" : "48 32\n");
+        for (int y = 0; y < saved_height; ++y) {
+            for (int x = 0; x < saved_width; ++x) {
+                int tile, terrain, road, condition, belonging, care;
+                source >> tile >> terrain >> road >> condition >> belonging >> care;
+                if (!old_map || (x < 24 && y < 16))
+                    legacy << tile << ' ' << terrain << ' ' << road << ' '
+                           << belonging << ' ' << care << '\n';
+            }
+        }
+        return legacy.str();
+    };
+    std::stringstream legacy_save(make_legacy_save(false));
     auto restored_legacy = grace::World::load(legacy_save);
     assert(restored_legacy && restored_legacy->road_level(12, 8) == 1);
-    std::stringstream expanded_source(saved_commute.str());
-    std::string save_header, save_state, save_dimensions;
-    std::getline(expanded_source, save_header);
-    std::getline(expanded_source, save_state);
-    std::getline(expanded_source, save_dimensions);
-    std::stringstream old_map_save;
-    old_map_save << save_header << '\n' << save_state << "\n24 16\n";
-    for (int y = 0; y < grace::World::height; ++y) {
-        for (int x = 0; x < grace::World::width; ++x) {
-            int tile, terrain, road, belonging, care;
-            assert(expanded_source >> tile >> terrain >> road >> belonging >> care);
-            if (x < 24 && y < 16)
-                old_map_save << tile << ' ' << terrain << ' ' << road << ' '
-                             << belonging << ' ' << care << '\n';
-        }
-    }
+    std::stringstream old_map_save(make_legacy_save(true));
     auto restored_old_map = grace::World::load(old_map_save);
     assert(restored_old_map && restored_old_map->tile(15, 9) ==
            commute.tile(15, 9));
@@ -233,6 +243,28 @@ int main() {
     generous_budget.advance_week();
     assert(generous_budget.household_needs(10, 7).care >
            lean_budget.household_needs(10, 7).care);
+    grace::World lean_roads;
+    grace::World maintained_roads;
+    lean_roads.set_road_budget(grace::RoadBudget::lean);
+    maintained_roads.set_road_budget(grace::RoadBudget::balanced);
+    assert(lean_roads.snapshot().road_upkeep < maintained_roads.snapshot().road_upkeep);
+    for (int week = 0; week < 4; ++week) {
+        lean_roads.advance_week();
+        maintained_roads.advance_week();
+    }
+    assert(lean_roads.road_condition(12, 8) == 52);
+    assert(lean_roads.road_capacity(12, 8) < maintained_roads.road_capacity(12, 8));
+    assert(lean_roads.snapshot().bad_roads > 0);
+    assert(lean_roads.snapshot().city_score < maintained_roads.snapshot().city_score);
+    std::stringstream worn_roads_file;
+    assert(lean_roads.save(worn_roads_file));
+    auto restored_worn_roads = grace::World::load(worn_roads_file);
+    assert(restored_worn_roads &&
+           restored_worn_roads->snapshot().road_budget == grace::RoadBudget::lean);
+    assert(restored_worn_roads->road_condition(12, 8) == 52);
+    lean_roads.set_road_budget(grace::RoadBudget::generous);
+    for (int week = 0; week < 6; ++week) lean_roads.advance_week();
+    assert(lean_roads.road_condition(12, 8) == 100);
     grace::World gentle_giving;
     grace::World ambitious_giving;
     assert(gentle_giving.place(13, 9, grace::Tile::power_plant));
