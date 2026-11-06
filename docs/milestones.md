@@ -9,7 +9,7 @@ Each milestone ends with something the player can run or evaluate. Status was la
 | M2 — Town anatomy | **Complete for prototype** | Connected road network, camera, zoom, land terrain | Disconnected districts behave correctly; map can be navigated; overlays explain access |
 | M3 — Community life | **Complete for prototype** | Household needs, care coverage, volunteer pool, events | At least two viable town strategies; service shortages produce understandable effects |
 | M4 — Identity | Planned | Isometric art pass, seasons, music, resident stories | A new player understands buildings and town state without developer guidance |
-| M5 — Resilience | **In progress** | Versioned single-slot save/load; larger maps, performance, accessibility still planned | Save compatibility tests; stable frame time at target town size; remappable controls and readable UI |
+| M5 — Resilience | **In progress** | Versioned single-slot save/load; playable map expanded to 48 × 32 tiles with zoom and pan; performance and accessibility still planned | Save compatibility tests; stable frame time at target town size; remappable controls and readable UI |
 | M6 — Public demo | Planned | Tutorial, balance, packaging on Windows/macOS/Linux | Complete 45–60 minute arc; platform smoke tests; asset and license audit |
 
 ## Progress evidence

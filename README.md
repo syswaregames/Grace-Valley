@@ -30,8 +30,8 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Start a new town after bankruptcy | `Backspace` |
 | Remove a building | Right click |
 | Advance one week while paused, after starting | `N` |
-| Pan the camera | `WASD`, arrow keys, or middle mouse drag |
-| Zoom at the pointer | Mouse wheel |
+| Pan the camera across the expanded 48 × 32 valley | `WASD`, arrow keys, or middle mouse drag |
+| Zoom at the pointer; survey the whole valley | Mouse wheel |
 | Zoom from the center | `+` and `-` |
 | Reset the camera | `R` |
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |

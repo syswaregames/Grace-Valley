@@ -27,8 +27,10 @@ namespace {
 constexpr float base_cell = 40.0f;
 constexpr int margin = 20;
 constexpr int header = 100;
-constexpr int map_width = grace::World::width * 40;
-constexpr int map_height = grace::World::height * 40;
+// Keep the play viewport comfortable on a desktop display while the world
+// itself can extend well beyond the initial view.
+constexpr int map_width = 960;
+constexpr int map_height = 640;
 constexpr int sidebar_x = margin + map_width + 16;
 constexpr int sidebar_width = 188;
 constexpr int window_width = sidebar_x + sidebar_width + 20;
@@ -77,7 +79,7 @@ struct Camera {
         const float old_size = cell_size();
         const float tile_x = (screen_x - margin - offset_x) / old_size;
         const float tile_y = (screen_y - header - offset_y) / old_size;
-        zoom = std::clamp(zoom * amount, 0.65f, 2.25f);
+        zoom = std::clamp(zoom * amount, 0.35f, 2.25f);
         offset_x = screen_x - margin - tile_x * cell_size();
         offset_y = screen_y - header - tile_y * cell_size();
         clamp();
@@ -920,7 +922,7 @@ int main(int argc, char** argv) {
                     std::isfinite(restored_camera.zoom) &&
                     std::isfinite(restored_camera.offset_x) &&
                     std::isfinite(restored_camera.offset_y) &&
-                    restored_camera.zoom >= 0.65f && restored_camera.zoom <= 2.25f &&
+                    restored_camera.zoom >= 0.35f && restored_camera.zoom <= 2.25f &&
                     std::abs(restored_camera.offset_x) < 100000.0f &&
                     std::abs(restored_camera.offset_y) < 100000.0f;
                 valid = valid && saved_tool >= 0 &&

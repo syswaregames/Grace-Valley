@@ -125,6 +125,26 @@ int main() {
     std::stringstream legacy_save(legacy_text);
     auto restored_legacy = grace::World::load(legacy_save);
     assert(restored_legacy && restored_legacy->road_level(12, 8) == 1);
+    std::stringstream expanded_source(saved_commute.str());
+    std::string save_header, save_state, save_dimensions;
+    std::getline(expanded_source, save_header);
+    std::getline(expanded_source, save_state);
+    std::getline(expanded_source, save_dimensions);
+    std::stringstream old_map_save;
+    old_map_save << save_header << '\n' << save_state << "\n24 16\n";
+    for (int y = 0; y < grace::World::height; ++y) {
+        for (int x = 0; x < grace::World::width; ++x) {
+            int tile, terrain, road, belonging, care;
+            assert(expanded_source >> tile >> terrain >> road >> belonging >> care);
+            if (x < 24 && y < 16)
+                old_map_save << tile << ' ' << terrain << ' ' << road << ' '
+                             << belonging << ' ' << care << '\n';
+        }
+    }
+    auto restored_old_map = grace::World::load(old_map_save);
+    assert(restored_old_map && restored_old_map->tile(15, 9) ==
+           commute.tile(15, 9));
+    assert(restored_old_map->terrain(34, 23) == grace::Terrain::water);
     commute.advance_week();
     restored_commute->advance_week();
     assert(restored_commute->snapshot().treasury == commute.snapshot().treasury);

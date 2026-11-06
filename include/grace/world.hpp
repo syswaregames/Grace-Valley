@@ -1,9 +1,9 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <iosfwd>
 #include <optional>
+#include <vector>
 
 namespace grace {
 
@@ -80,8 +80,8 @@ struct Snapshot {
 
 class World {
 public:
-    static constexpr int width = 24;
-    static constexpr int height = 16;
+    static constexpr int width = 48;
+    static constexpr int height = 32;
     static constexpr int service_radius = 5;
 
     World();
@@ -124,14 +124,14 @@ public:
     static const char* name(Tile type);
 
 private:
-    std::array<Tile, width * height> tiles_{};
-    std::array<Terrain, width * height> terrain_{};
-    std::array<bool, width * height> connected_{};
-    std::array<bool, width * height> powered_{};
-    std::array<std::uint8_t, width * height> road_levels_{};
-    std::array<int, width * height> traffic_{};
-    std::array<bool, width * height> staffed_{};
-    std::array<HouseholdNeeds, width * height> needs_{};
+    std::vector<Tile> tiles_ = std::vector<Tile>(width * height);
+    std::vector<Terrain> terrain_ = std::vector<Terrain>(width * height);
+    std::vector<bool> connected_ = std::vector<bool>(width * height);
+    std::vector<bool> powered_ = std::vector<bool>(width * height);
+    std::vector<std::uint8_t> road_levels_ = std::vector<std::uint8_t>(width * height);
+    std::vector<int> traffic_ = std::vector<int>(width * height);
+    std::vector<bool> staffed_ = std::vector<bool>(width * height);
+    std::vector<HouseholdNeeds> needs_ = std::vector<HouseholdNeeds>(width * height);
     Snapshot state_{};
     int last_event_week_ = -100;
     bool inside(int x, int y) const;

@@ -1,6 +1,7 @@
 #include "grace/world.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <istream>
 #include <ostream>
@@ -14,6 +15,8 @@ namespace {
 constexpr int index(int x, int y) { return y * World::width + x; }
 constexpr int anchor_x = 12;
 constexpr int anchor_y = 8;
+constexpr int legacy_width = 24;
+constexpr int legacy_height = 16;
 constexpr int plant_output = 12;
 constexpr std::array<int, 4> road_capacities{6, 14, 24, 36};
 constexpr std::array<int, 4> road_upgrade_costs{0, 20, 35, 55};
@@ -29,8 +32,8 @@ constexpr int power_need(Tile tile) {
 }
 
 World::World() {
-    tiles_.fill(Tile::meadow);
-    terrain_.fill(Terrain::grass);
+    std::fill(tiles_.begin(), tiles_.end(), Tile::meadow);
+    std::fill(terrain_.begin(), terrain_.end(), Terrain::grass);
     for (int y = 1; y <= 5; ++y)
         for (int x = 2; x <= 6; ++x)
             if ((x + y) % 4 != 0) terrain_[index(x, y)] = Terrain::woods;
@@ -41,6 +44,20 @@ World::World() {
         for (int x = 18; x <= 22; ++x)
             if ((x - 20) * (x - 20) + (y - 4) * (y - 4) <= 6)
                 terrain_[index(x, y)] = Terrain::water;
+    // Seed the expanded countryside with broad, deterministic woodland and
+    // small lakes while leaving the original starting district untouched.
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (x < legacy_width && y < legacy_height) continue;
+            const int woodland = (x * 17 + y * 29 + x * y * 3) % 19;
+            if (woodland < 5) terrain_[index(x, y)] = Terrain::woods;
+            const int lake_x = (x - 34) * (x - 34);
+            const int lake_y = (y - 23) * (y - 23);
+            if (lake_x + lake_y <= 12 ||
+                ((x - 41) * (x - 41) + (y - 8) * (y - 8) <= 5))
+                terrain_[index(x, y)] = Terrain::water;
+        }
+    }
     for (int x = 8; x <= 15; ++x) tiles_[index(x, 8)] = Tile::road;
     tiles_[index(10, 7)] = Tile::home;
     tiles_[index(12, 7)] = Tile::chapel;
@@ -162,7 +179,7 @@ int World::coverage_change_if_placed(Tile service, int x, int y) const {
 }
 
 void World::rebuild_connections() {
-    connected_.fill(false);
+    std::fill(connected_.begin(), connected_.end(), false);
     if (tile(anchor_x, anchor_y) != Tile::road) return;
     std::queue<int> pending;
     pending.push(index(anchor_x, anchor_y));
@@ -187,7 +204,7 @@ void World::rebuild_connections() {
 }
 
 void World::rebuild_power() {
-    powered_.fill(false);
+    std::fill(powered_.begin(), powered_.end(), false);
     int available = 0;
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x)
@@ -218,7 +235,7 @@ void World::rebuild_power() {
 }
 
 void World::rebuild_traffic() {
-    traffic_.fill(0);
+    std::fill(traffic_.begin(), traffic_.end(), 0);
     struct Job { int x; int y; int remaining; };
     std::vector<Job> jobs;
     std::vector<int> homes;
@@ -302,7 +319,7 @@ void World::rebuild_traffic() {
 }
 
 void World::rebuild_staffing() {
-    staffed_.fill(false);
+    std::fill(staffed_.begin(), staffed_.end(), false);
     state_.volunteers_available = 5 + state_.population / 4;
     state_.volunteers_used = state_.event_weeks_left > 0 ? 2 : 0;
     state_.active_chapels = 0;
@@ -789,22 +806,27 @@ std::optional<World> World::load(std::istream& input) {
     const int saved_population = result.state_.population;
     int saved_width, saved_height;
     if (!(input >> saved_width >> saved_height) ||
-        saved_width != width || saved_height != height) return std::nullopt;
-    for (std::size_t i = 0; i < result.tiles_.size(); ++i) {
-        int tile, terrain, upgraded, belonging, care;
-        if (!(input >> tile >> terrain >> upgraded >> belonging >> care) ||
-            tile < 0 || tile > static_cast<int>(Tile::power_plant) ||
-            terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
-            upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
-            (upgraded && tile != static_cast<int>(Tile::road)) ||
-            belonging < 0 || belonging > 100 || care < 0 || care > 100 ||
-            (terrain == static_cast<int>(Terrain::water) &&
-             tile != static_cast<int>(Tile::meadow) &&
-             tile != static_cast<int>(Tile::road))) return std::nullopt;
-        result.tiles_[i] = static_cast<Tile>(tile);
-        result.terrain_[i] = static_cast<Terrain>(terrain);
-        result.road_levels_[i] = static_cast<std::uint8_t>(upgraded);
-        result.needs_[i] = {belonging, care};
+        !((saved_width == width && saved_height == height) ||
+          (saved_width == legacy_width && saved_height == legacy_height)))
+        return std::nullopt;
+    for (int y = 0; y < saved_height; ++y) {
+        for (int x = 0; x < saved_width; ++x) {
+            int tile, terrain, upgraded, belonging, care;
+            if (!(input >> tile >> terrain >> upgraded >> belonging >> care) ||
+                tile < 0 || tile > static_cast<int>(Tile::power_plant) ||
+                terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
+                upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
+                (upgraded && tile != static_cast<int>(Tile::road)) ||
+                belonging < 0 || belonging > 100 || care < 0 || care > 100 ||
+                (terrain == static_cast<int>(Terrain::water) &&
+                 tile != static_cast<int>(Tile::meadow) &&
+                 tile != static_cast<int>(Tile::road))) return std::nullopt;
+            const auto i = static_cast<std::size_t>(index(x, y));
+            result.tiles_[i] = static_cast<Tile>(tile);
+            result.terrain_[i] = static_cast<Terrain>(terrain);
+            result.road_levels_[i] = static_cast<std::uint8_t>(upgraded);
+            result.needs_[i] = {belonging, care};
+        }
     }
     if (result.tile(anchor_x, anchor_y) != Tile::road) return std::nullopt;
     result.rebuild_connections();

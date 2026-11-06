@@ -47,4 +47,4 @@ An inviting isometric 2.5D town with readable silhouettes, warm windows, gardens
 
 ## First playable boundaries
 
-Desktop single player, mouse and keyboard, one fixed map, no combat, no online services. The first slice favors a fast build and clear feedback over realistic economics. Numbers and rules are temporary tuning values. A versioned, manual single-slot save is available; autosave and multiple slots remain future work. Detailed terrain, richer route choices, seasonal events, and a full UI belong to later milestones.
+Desktop single player, mouse and keyboard, one 48 × 32 tile valley viewed through a fixed camera viewport, no combat, no online services. The first slice favors a fast build and clear feedback over realistic economics. Numbers and rules are temporary tuning values. A versioned, manual single-slot save is available; earlier 24 × 16 towns expand into the new countryside when loaded. Autosave and multiple slots remain future work. Detailed terrain, richer route choices, seasonal events, and a full UI belong to later milestones.
