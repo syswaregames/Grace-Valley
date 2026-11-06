@@ -48,6 +48,17 @@ int main() {
     assert(world.place(10, 9, grace::Tile::road));
     assert(world.is_connected(10, 8));
     assert(world.snapshot().connected_homes == 2);
+    grace::World repair;
+    assert(repair.remove(11, 8));
+    assert(!repair.is_connected(10, 8));
+    assert(repair.can_place(10, 9, grace::Tile::road));
+    assert(!repair.can_place(10, 7, grace::Tile::home));
+    assert(repair.place(10, 9, grace::Tile::road));
+    assert(!repair.is_connected(10, 9));
+    assert(repair.place(11, 9, grace::Tile::road));
+    assert(!repair.is_connected(11, 9));
+    assert(repair.place(12, 9, grace::Tile::road));
+    assert(repair.is_connected(10, 8));
     grace::World terrain_world;
     assert(terrain_world.place(16, 8, grace::Tile::road));
     assert(terrain_world.place(17, 8, grace::Tile::road));

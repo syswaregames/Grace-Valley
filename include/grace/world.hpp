@@ -85,6 +85,7 @@ private:
     int last_event_week_ = -100;
     bool inside(int x, int y) const;
     bool has_road(int x, int y) const;
+    bool has_adjacent_road(int x, int y) const;
     void rebuild_connections();
     void rebuild_staffing();
     void update_households();

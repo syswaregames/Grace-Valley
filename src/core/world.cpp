@@ -206,6 +206,11 @@ bool World::has_road(int x, int y) const {
            (inside(x, y + 1) && connected_[index(x, y + 1)]);
 }
 
+bool World::has_adjacent_road(int x, int y) const {
+    return tile(x - 1, y) == Tile::road || tile(x + 1, y) == Tile::road ||
+           tile(x, y - 1) == Tile::road || tile(x, y + 1) == Tile::road;
+}
+
 bool World::near(int x, int y, Tile type, int radius) const {
     for (int dy = -radius; dy <= radius; ++dy) {
         for (int dx = -radius; dx <= radius; ++dx) {
@@ -228,7 +233,7 @@ PlacementError World::placement_error(int x, int y, Tile type) const {
     if (type == Tile::meadow || tile(x, y) != Tile::meadow) return PlacementError::occupied;
     if (terrain(x, y) == Terrain::water) return PlacementError::water;
     if (state_.treasury < cost_at(x, y, type)) return PlacementError::insufficient_funds;
-    if (!has_road(x, y))
+    if (type == Tile::road ? !has_adjacent_road(x, y) : !has_road(x, y))
         return type == Tile::road ? PlacementError::needs_connection : PlacementError::needs_road;
     return PlacementError::none;
 }

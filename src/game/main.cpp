@@ -323,8 +323,7 @@ RoadPaintResult paint_road_segment(grace::World& world, int from_x, int from_y,
     int y = from_y;
     int added = 0;
     auto passable = [&](int next_x, int next_y) {
-        return (world.tile(next_x, next_y) == grace::Tile::road &&
-                world.is_connected(next_x, next_y)) ||
+        return world.tile(next_x, next_y) == grace::Tile::road ||
                world.can_place(next_x, next_y, grace::Tile::road);
     };
     while (x != target_x || y != target_y) {
@@ -422,6 +421,25 @@ int main(int argc, char** argv) {
         up.button.x = motion.motion.x;
         up.button.y = motion.motion.y;
         SDL_PushEvent(&up);
+        auto click = [&](Uint32 type, Uint8 button, int x, int y) {
+            SDL_Event event{};
+            event.type = type;
+            event.button.button = button;
+            event.button.x = margin + (x + 0.5f) * base_cell;
+            event.button.y = header + (y + 0.5f) * base_cell;
+            SDL_PushEvent(&event);
+        };
+        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT, 11, 9);
+        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT, 11, 8);
+        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT, 10, 8);
+        SDL_Event repair_motion{};
+        repair_motion.type = SDL_EVENT_MOUSE_MOTION;
+        repair_motion.motion.x = margin + 10.5f * base_cell;
+        repair_motion.motion.y = header + 10.5f * base_cell;
+        SDL_PushEvent(&repair_motion);
+        repair_motion.motion.x = margin + 11.5f * base_cell;
+        SDL_PushEvent(&repair_motion);
+        click(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT, 11, 10);
     }
 
     while (running) {
@@ -516,8 +534,7 @@ int main(int argc, char** argv) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         const auto error = world.placement_error(x, y, selected);
                         if (selected == grace::Tile::road &&
-                            world.tile(x, y) == grace::Tile::road &&
-                            world.is_connected(x, y)) {
+                            world.tile(x, y) == grace::Tile::road) {
                             painting_roads = true;
                             paint_x = x;
                             paint_y = y;
@@ -535,6 +552,7 @@ int main(int argc, char** argv) {
                         } else feedback = placement_message(error);
                     }
                     if (event.button.button == SDL_BUTTON_RIGHT) {
+                        painting_roads = false;
                         if (world.remove(x, y)) feedback = "Tile cleared. Disconnected areas are marked red.";
                         else feedback = (x == 12 && y == 8)
                             ? "The chapel's starting road cannot be removed."
@@ -717,8 +735,12 @@ int main(int argc, char** argv) {
         SDL_RenderPresent(renderer);
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
-                if (world.tile(x, 9) != grace::Tile::road) exit_status = 1;
-            if (world.snapshot().treasury != 230) exit_status = 1;
+                if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;
+            if (world.tile(11, 8) != grace::Tile::meadow ||
+                world.tile(10, 10) != grace::Tile::road ||
+                world.tile(11, 10) != grace::Tile::road ||
+                world.is_connected(10, 10) ||
+                world.snapshot().treasury != 220) exit_status = 1;
             if (exit_status != 0)
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
