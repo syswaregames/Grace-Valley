@@ -1,0 +1,32 @@
+# CMake and IDE outputs
+/build/
+/out/
+/cmake-build-*/
+/.vs/
+/.vscode/
+/.idea/
+CMakeUserPresets.json
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+
+# Compiled binaries and debug symbols
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.so
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.dSYM/
+
+# Generated game data and OS files
+/saves/
+/screenshots/
+*.log
+.DS_Store
+Thumbs.db
