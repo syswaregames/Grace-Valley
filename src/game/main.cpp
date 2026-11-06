@@ -122,9 +122,21 @@ void draw_coverage(SDL_Renderer* renderer, const grace::World& world,
     }
 }
 
-void draw_tile(SDL_Renderer* renderer, int x, int y, grace::Tile type,
-               grace::Terrain terrain,
-               const Camera& camera, bool connected, bool active_service) {
+enum RoadSide : unsigned { north = 1, east = 2, south = 4, west = 8 };
+
+unsigned road_sides(const grace::World& world, int x, int y) {
+    return (world.tile(x, y - 1) == grace::Tile::road ? north : 0) |
+           (world.tile(x + 1, y) == grace::Tile::road ? east : 0) |
+           (world.tile(x, y + 1) == grace::Tile::road ? south : 0) |
+           (world.tile(x - 1, y) == grace::Tile::road ? west : 0);
+}
+
+void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
+               const Camera& camera) {
+    const auto type = world.tile(x, y);
+    const auto terrain = world.terrain(x, y);
+    const bool connected = world.is_connected(x, y);
+    const bool active_service = world.is_active_service(x, y);
     const auto tile_rect = camera.tile_rect(x, y);
     const float px = tile_rect.x;
     const float py = tile_rect.y;
@@ -147,10 +159,41 @@ void draw_tile(SDL_Renderer* renderer, int x, int y, grace::Tile type,
         shape(20, 25, 14, 2, {135, 190, 201});
     }
     switch (type) {
-    case grace::Tile::road:
-        shape(0, 12, 39, 16, {126, 119, 109});
-        shape(16, 0, 8, 39, {126, 119, 109});
+    case grace::Tile::road: {
+        const unsigned sides = road_sides(world, x, y);
+        const Color curb{188, 169, 135};
+        const Color street{111, 111, 105};
+        const Color marking{231, 216, 171};
+        shape(7, 7, 26, 26, curb);
+        if (sides & north) shape(7, 0, 26, 20, curb);
+        if (sides & east) shape(20, 7, 20, 26, curb);
+        if (sides & south) shape(7, 20, 26, 20, curb);
+        if (sides & west) shape(0, 7, 20, 26, curb);
+        if ((sides & (north | east)) == (north | east))
+            shape(27, 0, 13, 13, curb);
+        if ((sides & (east | south)) == (east | south))
+            shape(27, 27, 13, 13, curb);
+        if ((sides & (south | west)) == (south | west))
+            shape(0, 27, 13, 13, curb);
+        if ((sides & (west | north)) == (west | north))
+            shape(0, 0, 13, 13, curb);
+        shape(10, 10, 20, 20, street);
+        if (sides & north) shape(10, 0, 20, 20, street);
+        if (sides & east) shape(20, 10, 20, 20, street);
+        if (sides & south) shape(10, 20, 20, 20, street);
+        if (sides & west) shape(0, 10, 20, 20, street);
+        if ((sides & (east | west)) == (east | west) &&
+            !(sides & (north | south))) {
+            shape(3, 19, 7, 2, marking);
+            shape(30, 19, 7, 2, marking);
+        }
+        if ((sides & (north | south)) == (north | south) &&
+            !(sides & (east | west))) {
+            shape(19, 3, 2, 7, marking);
+            shape(19, 30, 2, 7, marking);
+        }
         break;
+    }
     case grace::Tile::home:
         shape(7, 15, 26, 19, {242, 221, 177});
         shape(4, 11, 32, 7, {154, 81, 66});
@@ -276,7 +319,9 @@ void autoplay_step(grace::World& world) {
 
 int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
-    const bool capture = argc > 2 && std::string(argv[1]) == "--capture";
+    const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
+    const bool capture = argc > 2 &&
+        (std::string(argv[1]) == "--capture" || capture_roads);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
     int exit_status = 0;
@@ -305,8 +350,16 @@ int main(int argc, char** argv) {
     }
 
     grace::World world;
+    if (capture_roads) {
+        world.place(11, 9, grace::Tile::road);
+        world.place(11, 10, grace::Tile::road);
+        world.place(12, 10, grace::Tile::road);
+        world.place(12, 9, grace::Tile::road);
+        world.place(13, 9, grace::Tile::road);
+    }
     Camera camera;
-    grace::Tile selected = capture ? grace::Tile::pantry : grace::Tile::road;
+    grace::Tile selected = capture && !capture_roads
+        ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
     bool paused = false;
     bool dragging = false;
@@ -460,12 +513,11 @@ int main(int argc, char** argv) {
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
             for (int x = 0; x < grace::World::width; ++x)
-                draw_tile(renderer, x, y, world.tile(x, y), world.terrain(x, y),
-                          camera, world.is_connected(x, y), world.is_active_service(x, y));
+                draw_tile(renderer, world, x, y, camera);
 
         float mx, my;
         if (capture) {
-            mx = margin + 11.5f * base_cell;
+            mx = margin + (capture_roads ? 10.5f : 11.5f) * base_cell;
             my = header + 9.5f * base_cell;
         } else {
             SDL_GetMouseState(&mx, &my);
@@ -485,6 +537,23 @@ int main(int argc, char** argv) {
         if (service_view)
             draw_coverage(renderer, world, preview ? &*preview : nullptr,
                           selected, camera, preview_valid);
+        if (selected == grace::Tile::road && over_tile &&
+            world.can_place(hover_x, hover_y, selected)) {
+            grace::World road_preview = world;
+            road_preview.place(hover_x, hover_y, grace::Tile::road);
+            constexpr std::array<std::array<int, 2>, 5> nearby{{
+                {{0, 0}}, {{-1, 0}}, {{1, 0}}, {{0, -1}}, {{0, 1}}}};
+            for (const auto& offset : nearby) {
+                const int x = hover_x + offset[0];
+                const int y = hover_y + offset[1];
+                if (road_preview.tile(x, y) == grace::Tile::road &&
+                    x >= 0 && x < grace::World::width &&
+                    y >= 0 && y < grace::World::height)
+                    draw_tile(renderer, road_preview, x, y, camera);
+            }
+            auto ghost = camera.tile_rect(hover_x, hover_y);
+            tint(renderer, ghost, {252, 210, 110}, 65);
+        }
         if (over_tile) {
             const Color preview = world.can_place(hover_x, hover_y, selected)
                 ? Color{253, 229, 153} : Color{225, 91, 83};

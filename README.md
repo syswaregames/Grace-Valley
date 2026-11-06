@@ -26,6 +26,8 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 
 Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and active tool. The lower bar shows access and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
 
+Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
+
 With a chapel or pantry selected, **green** shows the reach of staffed buildings, **gold** shows new reach from a valid hovered placement, and **red markers** identify homes that still need the selected service or would lose it after the proposed placement. An **orange outline** on a connected service means it needs volunteers. The lower bar shows covered connected homes and the net change the proposed building would cause. The preview accounts for volunteer staffing; a placeable building may show no new coverage when it cannot be staffed. Service reach currently uses a five-tile Manhattan radius; road access is required, but travel along roads is not yet simulated.
 
 Each home has **belonging** and **care** needs that change weekly. Staffed chapels help belonging, staffed pantries help care, and parks help both. Volunteers grow with population; when there are too few to staff every service, `V` chooses whether pantries or chapels get first priority. Gatherings boost belonging and arrivals, while food drives boost care. Events last two weeks, reserve two volunteers, and share a six-week cooldown. Hover over a home to inspect its needs.
@@ -62,7 +64,7 @@ The first configure downloads SDL3 3.4.18 unless a compatible SDL3 package is al
 
 ## Verification
 
-`ctest` runs rule checks and accelerated compact, spread, and event-led town scenarios. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
+`ctest` runs rule checks and accelerated compact, spread, and event-led town scenarios. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png` or `--capture-roads build/roads-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
 
 ## Project layout
 
