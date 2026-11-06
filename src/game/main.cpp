@@ -386,6 +386,50 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
                 shape(32, 0, 3, 40, rail);
             }
         }
+        const int condition = world.road_condition(x, y);
+        if (condition < 85 && scale >= 0.55f) {
+            const bool horizontal = (sides & (east | west)) != 0;
+            auto crack_line = [&](float x1, float y1, float x2, float y2) {
+                SDL_SetRenderDrawColor(renderer, 54, 52, 50, 255);
+                SDL_RenderLine(renderer, px + x1 * scale, py + y1 * scale,
+                               px + x2 * scale, py + y2 * scale);
+            };
+            // Irregular branching fissures make deterioration read as surface
+            // damage even when traffic and road-level colors are present.
+            if (horizontal) {
+                crack_line(13, 11, 16, 15);
+                crack_line(16, 15, 14, 19);
+                crack_line(14, 19, 18, 24);
+            } else {
+                crack_line(11, 13, 15, 16);
+                crack_line(15, 16, 19, 14);
+                crack_line(19, 14, 24, 18);
+            }
+            if (condition < 60) {
+                if (horizontal) {
+                    crack_line(25, 13, 22, 17);
+                    crack_line(22, 17, 25, 21);
+                    crack_line(7, 26, 11, 23);
+                } else {
+                    crack_line(13, 25, 17, 22);
+                    crack_line(17, 22, 21, 25);
+                    crack_line(26, 7, 23, 11);
+                }
+            }
+            if (condition < 30) {
+                const float pit_x = horizontal ? 17.0f : 12.0f;
+                const float pit_y = horizontal ? 12.0f : 17.0f;
+                const float pit_w = horizontal ? 8.0f : 5.0f;
+                const float pit_h = horizontal ? 5.0f : 8.0f;
+                shape(pit_x - 1, pit_y - 1, pit_w + 2, pit_h + 2,
+                      {145, 115, 91});
+                shape(pit_x, pit_y, pit_w, pit_h, {55, 53, 51});
+                crack_line(pit_x + 1, pit_y + 1, pit_x + pit_w - 1,
+                           pit_y + pit_h - 1);
+                crack_line(pit_x + pit_w - 1, pit_y + 1, pit_x + 1,
+                           pit_y + pit_h - 1);
+            }
+        }
         if (level > 0 && scale >= 0.85f) {
             shape(1, 1, 11, 11, level == 1 ? Color{76, 97, 110} :
                 level == 2 ? Color{77, 105, 79} : Color{144, 106, 58});
