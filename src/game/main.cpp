@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -17,8 +18,21 @@ constexpr int margin = 20;
 constexpr int header = 100;
 constexpr int map_width = grace::World::width * 40;
 constexpr int map_height = grace::World::height * 40;
-constexpr int window_width = map_width + 2 * margin;
+constexpr int sidebar_x = margin + map_width + 16;
+constexpr int sidebar_width = 188;
+constexpr int window_width = sidebar_x + sidebar_width + 20;
 constexpr int window_height = map_height + header + 118;
+constexpr SDL_FRect play_button{625, 17, 102, 42};
+constexpr SDL_FRect budget_button{737, 17, 102, 42};
+constexpr SDL_FRect options_button{849, 17, 102, 42};
+constexpr SDL_FRect tool_button(int index) {
+    return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
+            static_cast<float>(140 + (index / 2) * 82), 82, 76};
+}
+constexpr SDL_FRect option_button(int row) {
+    return {static_cast<float>(sidebar_x + 8), static_cast<float>(190 + row * 48),
+            172, 39};
+}
 
 struct Camera {
     float zoom = 1.0f;
@@ -65,6 +79,44 @@ void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
 void tint(SDL_Renderer* renderer, SDL_FRect rect, Color color, Uint8 alpha) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, alpha);
     SDL_RenderFillRect(renderer, &rect);
+}
+
+bool contains(SDL_FRect rect, float x, float y) {
+    return x >= rect.x && x < rect.x + rect.w &&
+           y >= rect.y && y < rect.y + rect.h;
+}
+
+void draw_button(SDL_Renderer* renderer, SDL_FRect rect, const char* label,
+                 bool active = false) {
+    fill(renderer, rect, active ? Color{202, 169, 104} : Color{69, 92, 91});
+    fill(renderer, {rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4},
+         active ? Color{120, 105, 65} : Color{46, 68, 68});
+    SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
+    const float label_width = static_cast<float>(std::strlen(label) * 8);
+    SDL_RenderDebugText(renderer, rect.x + (rect.w - label_width) / 2,
+                        rect.y + (rect.h - 8) / 2, label);
+}
+
+enum class ToolCategory { roads, zones, civic };
+
+ToolCategory category_for(grace::Tile type) {
+    if (type == grace::Tile::road) return ToolCategory::roads;
+    if (type == grace::Tile::chapel || type == grace::Tile::pantry ||
+        type == grace::Tile::park) return ToolCategory::civic;
+    return ToolCategory::zones;
+}
+
+const char* tool_label(grace::Tile type) {
+    switch (type) {
+    case grace::Tile::road: return "ROAD";
+    case grace::Tile::residential_zone: return "RES";
+    case grace::Tile::commercial_zone: return "COM";
+    case grace::Tile::industrial_zone: return "IND";
+    case grace::Tile::chapel: return "CHAPEL";
+    case grace::Tile::pantry: return "PANTRY";
+    case grace::Tile::park: return "PARK";
+    default: return "TOOL";
+    }
 }
 
 void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
@@ -478,14 +530,16 @@ int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
     const bool zone_smoke = argc > 1 && std::string(argv[1]) == "--zone-smoke";
+    const bool toolbar_smoke = argc > 1 && std::string(argv[1]) == "--toolbar-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
+    const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads ||
-         capture_budget || capture_zones || capture_bankrupt);
+         capture_budget || capture_options || capture_zones || capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
     int exit_status = 0;
@@ -547,14 +601,16 @@ int main(int argc, char** argv) {
         world.place(15, 9, grace::Tile::industrial_zone);
     }
     Camera camera;
-    grace::Tile selected = capture && !capture_roads && !capture_budget &&
-        !capture_zones && !capture_bankrupt
-        ? grace::Tile::pantry : grace::Tile::road;
+    grace::Tile selected = capture_zones ? grace::Tile::residential_zone :
+        capture && !capture_roads && !capture_budget &&
+        !capture_options && !capture_bankrupt
+            ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
     bool paused = soak_seconds == 0;
     bool simulation_started = soak_seconds > 0 || capture_zones ||
         capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
+    bool options_open = capture_options;
     bool dragging = false;
     bool painting_tiles = false;
     int paint_x = 0, paint_y = 0;
@@ -577,10 +633,65 @@ int main(int argc, char** argv) {
         simulation_started = false;
         paused = true;
         budget_open = false;
+        options_open = false;
         dragging = false;
         painting_tiles = false;
         last_week = SDL_GetTicks();
         feedback = "New town ready. Press Space when your setup is complete.";
+        feedback_until = SDL_GetTicks() + 4000;
+    };
+    auto toggle_play = [&] {
+        if (world.snapshot().bankrupt) return;
+        simulation_started = true;
+        paused = !paused;
+        feedback = paused ? "Simulation paused." : "Simulation running. Weekly cashflow has started.";
+        feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto cycle_giving = [&] {
+        const int next = (static_cast<int>(world.snapshot().giving_policy) + 1) % 3;
+        world.set_giving_policy(static_cast<grace::GivingPolicy>(next));
+        feedback = std::string("Giving set to ") + giving_name(world.snapshot().giving_policy) + ".";
+        feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto cycle_services = [&] {
+        const int next = (static_cast<int>(world.snapshot().service_budget) + 1) % 3;
+        world.set_service_budget(static_cast<grace::ServiceBudget>(next));
+        feedback = std::string("Services set to ") + service_name(world.snapshot().service_budget) + ".";
+        feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto cycle_tax = [&] {
+        const int next = (static_cast<int>(world.snapshot().tax_policy) + 1) % 3;
+        world.set_tax_policy(static_cast<grace::TaxPolicy>(next));
+        feedback = std::string("Business tax set to ") + tax_name(world.snapshot().tax_policy) +
+            ". Higher taxes raise revenue but slow new business growth.";
+        feedback_until = SDL_GetTicks() + 4500;
+    };
+    auto toggle_priority = [&] {
+        world.set_care_priority(!world.snapshot().care_first);
+        feedback = world.snapshot().care_first
+            ? "Volunteers now staff pantries before chapels."
+            : "Volunteers now staff chapels before pantries.";
+        feedback_until = SDL_GetTicks() + 4000;
+    };
+    auto start_event = [&](grace::EventKind kind) {
+        feedback = event_message(world.host_event(kind), kind,
+                                 world.snapshot().event_cooldown);
+        feedback_until = SDL_GetTicks() + 4000;
+    };
+    auto step_week = [&] {
+        if (!paused || !simulation_started || world.snapshot().bankrupt) {
+            feedback = "Pause a running town to step one week.";
+        } else {
+            world.advance_week();
+            feedback = world.snapshot().bankrupt
+                ? "BANKRUPT: review the budget or start a new town."
+                : "Advanced one week.";
+            if (world.snapshot().bankrupt) {
+                budget_open = false;
+                options_open = false;
+                painting_tiles = false;
+            }
+        }
         feedback_until = SDL_GetTicks() + 4000;
     };
     if (bankrupt_smoke) {
@@ -604,17 +715,36 @@ int main(int argc, char** argv) {
         tax.type = SDL_EVENT_KEY_DOWN;
         tax.key.key = SDLK_T;
         SDL_PushEvent(&tax);
-        click(margin + 52 + 22, 38);
+        click(tool_button(1).x + 40, tool_button(1).y + 35);
         click(margin + 9.5f * base_cell, header + 7.5f * base_cell);
         SDL_Event zone_drag{};
         zone_drag.type = SDL_EVENT_MOUSE_MOTION;
         zone_drag.motion.x = margin + 8.5f * base_cell;
         zone_drag.motion.y = header + 7.5f * base_cell;
         SDL_PushEvent(&zone_drag);
-        click(margin + 2 * 52 + 22, 38);
+        click(tool_button(2).x + 40, tool_button(2).y + 35);
         click(margin + 11.5f * base_cell, header + 9.5f * base_cell);
-        click(margin + 3 * 52 + 22, 38);
+        click(tool_button(3).x + 40, tool_button(3).y + 35);
         click(margin + 13.5f * base_cell, header + 9.5f * base_cell);
+        click(options_button.x + 50, options_button.y + 20);
+        click(option_button(1).x + 80, option_button(1).y + 20);
+    }
+    if (toolbar_smoke) {
+        auto click = [&](SDL_FRect rect) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = SDL_BUTTON_LEFT;
+            event.button.x = rect.x + rect.w / 2;
+            event.button.y = rect.y + rect.h / 2;
+            SDL_PushEvent(&event);
+        };
+        click(play_button);
+        click(options_button);
+        click(option_button(4));
+        click(option_button(0));
+        click({static_cast<float>(sidebar_x + 8), 134, 172, 34});
+        click(tool_button(5));
+        click(budget_button);
     }
     if (drag_smoke) {
         SDL_Event down{};
@@ -669,69 +799,38 @@ int main(int argc, char** argv) {
                 painting_tiles = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
-                if (event.key.key == SDLK_ESCAPE) running = false;
+                if (event.key.key == SDLK_ESCAPE) {
+                    if (budget_open) budget_open = false;
+                    else if (options_open) options_open = false;
+                    else running = false;
+                    continue;
+                }
                 if (event.key.key == SDLK_BACKSPACE) {
                     new_town();
                     continue;
                 }
                 if (event.key.key == SDLK_B) {
                     budget_open = !budget_open;
+                    if (budget_open) options_open = false;
                     continue;
                 }
                 if (world.snapshot().bankrupt) continue;
-                if (event.key.key == SDLK_SPACE) {
-                    simulation_started = true;
-                    paused = !paused;
-                    feedback = paused ? "Simulation paused." : "Simulation running. Weekly cashflow has started.";
-                    feedback_until = SDL_GetTicks() + 3500;
-                }
-                if (event.key.key == SDLK_N && paused && simulation_started &&
-                    !world.snapshot().bankrupt) world.advance_week();
-                if (event.key.key == SDLK_G && !world.snapshot().bankrupt) {
-                    const int next = (static_cast<int>(world.snapshot().giving_policy) + 1) % 3;
-                    world.set_giving_policy(static_cast<grace::GivingPolicy>(next));
-                    feedback = std::string("Giving set to ") + giving_name(world.snapshot().giving_policy) + ".";
-                    feedback_until = SDL_GetTicks() + 3500;
-                }
-                if (event.key.key == SDLK_O && !world.snapshot().bankrupt) {
-                    const int next = (static_cast<int>(world.snapshot().service_budget) + 1) % 3;
-                    world.set_service_budget(static_cast<grace::ServiceBudget>(next));
-                    feedback = std::string("Services set to ") + service_name(world.snapshot().service_budget) + ".";
-                    feedback_until = SDL_GetTicks() + 3500;
-                }
-                if (event.key.key == SDLK_T) {
-                    const int next = (static_cast<int>(world.snapshot().tax_policy) + 1) % 3;
-                    world.set_tax_policy(static_cast<grace::TaxPolicy>(next));
-                    feedback = std::string("Business tax set to ") + tax_name(world.snapshot().tax_policy) +
-                        ". Higher taxes raise revenue but slow new business growth.";
-                    feedback_until = SDL_GetTicks() + 4500;
-                }
-                if (event.key.key == SDLK_V) {
-                    world.set_care_priority(!world.snapshot().care_first);
-                    feedback = world.snapshot().care_first
-                        ? "Volunteers now staff pantries before chapels."
-                        : "Volunteers now staff chapels before pantries.";
-                    feedback_until = SDL_GetTicks() + 4000;
-                }
-                if (event.key.key == SDLK_E) {
-                    feedback = event_message(world.host_event(grace::EventKind::gathering),
-                                             grace::EventKind::gathering,
-                                             world.snapshot().event_cooldown);
-                    feedback_until = SDL_GetTicks() + 4000;
-                }
-                if (event.key.key == SDLK_F) {
-                    feedback = event_message(world.host_event(grace::EventKind::food_drive),
-                                             grace::EventKind::food_drive,
-                                             world.snapshot().event_cooldown);
-                    feedback_until = SDL_GetTicks() + 4000;
-                }
+                if (event.key.key == SDLK_SPACE) toggle_play();
+                if (event.key.key == SDLK_N) step_week();
+                if (event.key.key == SDLK_G) cycle_giving();
+                if (event.key.key == SDLK_O) cycle_services();
+                if (event.key.key == SDLK_T) cycle_tax();
+                if (event.key.key == SDLK_V) toggle_priority();
+                if (event.key.key == SDLK_E) start_event(grace::EventKind::gathering);
+                if (event.key.key == SDLK_F) start_event(grace::EventKind::food_drive);
                 if (event.key.key == SDLK_R) camera = Camera{};
                 if (event.key.key == SDLK_EQUALS || event.key.key == SDLK_KP_PLUS)
-                    camera.zoom_at(1.15f, window_width / 2.0f, header + map_height / 2.0f);
+                    camera.zoom_at(1.15f, margin + map_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS)
-                    camera.zoom_at(1.0f / 1.15f, window_width / 2.0f, header + map_height / 2.0f);
+                    camera.zoom_at(1.0f / 1.15f, margin + map_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key >= SDLK_1 && event.key.key <= SDLK_7) {
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
+                    options_open = false;
                     painting_tiles = false;
                 }
             }
@@ -776,6 +875,25 @@ int main(int argc, char** argv) {
                 float mx = event.button.x;
                 float my = event.button.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(play_button, mx, my)) {
+                    toggle_play();
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(budget_button, mx, my)) {
+                    budget_open = !budget_open;
+                    if (budget_open) options_open = false;
+                    painting_tiles = false;
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(options_button, mx, my)) {
+                    options_open = !options_open;
+                    if (options_open) budget_open = false;
+                    painting_tiles = false;
+                    continue;
+                }
                 if (budget_open) {
                     if (event.button.button == SDL_BUTTON_RIGHT) budget_open = false;
                     if (event.button.button == SDL_BUTTON_LEFT &&
@@ -802,13 +920,42 @@ int main(int argc, char** argv) {
                     }
                     continue;
                 }
-                if (event.button.button == SDL_BUTTON_LEFT && my >= 17 && my < 59 &&
-                    mx >= margin && mx < margin + static_cast<int>(tools.size()) * 52) {
-                    const int tool = static_cast<int>((mx - margin) / 52);
-                    if (mx - margin - tool * 52 < 44) {
-                        selected = tools[static_cast<std::size_t>(tool)];
-                        painting_tiles = false;
+                if (mx >= sidebar_x && mx < sidebar_x + sidebar_width &&
+                    my >= header && my < header + map_height) {
+                    if (event.button.button == SDL_BUTTON_LEFT) {
+                        if (options_open) {
+                            const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
+                            if (contains(back, mx, my)) options_open = false;
+                            for (int row = 0; row < 10; ++row) {
+                                if (!contains(option_button(row), mx, my)) continue;
+                                switch (row) {
+                                case 0: toggle_play(); break;
+                                case 1: budget_open = true; options_open = false; break;
+                                case 2: cycle_giving(); break;
+                                case 3: cycle_services(); break;
+                                case 4: cycle_tax(); break;
+                                case 5: toggle_priority(); break;
+                                case 6: start_event(grace::EventKind::gathering); break;
+                                case 7: start_event(grace::EventKind::food_drive); break;
+                                case 8: camera = Camera{}; break;
+                                case 9: step_week(); break;
+                                }
+                                break;
+                            }
+                        } else {
+                            for (std::size_t index = 0; index < tools.size(); ++index)
+                                if (contains(tool_button(static_cast<int>(index)), mx, my)) {
+                                    selected = tools[index];
+                                    painting_tiles = false;
+                                    feedback = std::string(grace::World::name(selected)) +
+                                        " selected. Cost " +
+                                        std::to_string(grace::World::cost(selected)) + " funds.";
+                                    feedback_until = SDL_GetTicks() + 3000;
+                                    break;
+                                }
+                        }
                     }
+                    continue;
                 }
                 int x, y;
                 if (camera.tile_at(mx, my, x, y)) {
@@ -880,25 +1027,20 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(renderer, 34, 51, 55, 255);
         SDL_RenderClear(renderer);
 
-        // Building silhouettes match the map tiles; small numbers retain shortcuts.
-        for (std::size_t i = 0; i < tools.size(); ++i) {
-            const float x = static_cast<float>(margin + static_cast<int>(i) * 52);
-            fill(renderer, {x, 17, 44, 42}, tools[i] == selected ? Color{250, 227, 151} : Color{70, 85, 86});
-            draw_tool_icon(renderer, tools[i], x + 5, 22,
-                           static_cast<char>('1' + i));
-        }
         const auto state = world.snapshot();
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-        SDL_RenderDebugTextFormat(renderer, 400, 14, "WEEK %d %s  PEOPLE %d/%d  JOY %d",
+        SDL_RenderDebugTextFormat(renderer, margin, 14, "WEEK %d %s  PEOPLE %d/%d  JOY %d",
                                   state.week, state.bankrupt ? "BANKRUPT" :
                                   !simulation_started ? "SETUP" : paused ? "PAUSED" : "RUNNING",
                                   state.population,
                                   state.capacity, state.happiness);
-        SDL_RenderDebugTextFormat(renderer, 400, 34,
-            "FUNDS %d  IN %d  OUT %d  NET %+d  |  %s (%d)",
+        SDL_RenderDebugTextFormat(renderer, margin, 34,
+            "FUNDS %d  IN %d  OUT %d  NET %+d",
             state.treasury, state.weekly_income, state.weekly_upkeep,
-            state.weekly_income - state.weekly_upkeep,
-            grace::World::name(selected), grace::World::cost(selected));
+            state.weekly_income - state.weekly_upkeep);
+        draw_button(renderer, play_button, paused ? "PLAY" : "PAUSE", !paused);
+        draw_button(renderer, budget_button, "BUDGET", budget_open);
+        draw_button(renderer, options_button, "OPTIONS", options_open);
         if (logo) {
             const SDL_FRect logo_rect{static_cast<float>(window_width - 82), 3, 64, 64};
             SDL_RenderTexture(renderer, logo, nullptr, &logo_rect);
@@ -906,8 +1048,8 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugText(renderer, margin, 76,
             state.bankrupt
-                ? "BANKRUPT  |  CLICK NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS  B OPENS BUDGET"
-                : "SPACE PLAY/PAUSE  B BUDGET  T TAX  1-7 ZONE/BUILD  E/F EVENTS  RIGHT CLEAR  WASD PAN");
+                ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
+                : "SELECT TOOLS AT RIGHT  |  DRAG ROADS AND ZONES  |  RIGHT CLICK CLEAR  |  WASD PAN  WHEEL ZOOM");
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
@@ -916,7 +1058,7 @@ int main(int argc, char** argv) {
 
         float mx, my;
         if (capture) {
-            mx = margin + (capture_roads ? 10.5f : 11.5f) * base_cell;
+            mx = margin + (capture_roads || capture_zones ? 10.5f : 11.5f) * base_cell;
             my = header + 9.5f * base_cell;
         } else {
             SDL_GetMouseState(&mx, &my);
@@ -965,6 +1107,77 @@ int main(int argc, char** argv) {
                 SDL_RenderRect(renderer, &rect);
         }
         SDL_SetRenderClipRect(renderer, nullptr);
+        fill(renderer, {static_cast<float>(sidebar_x), static_cast<float>(header),
+                        sidebar_width, map_height}, {29, 45, 46});
+        fill(renderer, {static_cast<float>(sidebar_x), static_cast<float>(header),
+                        sidebar_width, 4}, {202, 169, 104});
+        SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
+        if (options_open) {
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "OPTIONS MENU");
+            const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
+            draw_button(renderer, back, "BACK TO TOOLS");
+            const std::array<std::string, 10> labels{
+                paused ? "PLAY TOWN" : "PAUSE TOWN", "OPEN BUDGET",
+                std::string("GIVING: ") + giving_name(state.giving_policy),
+                std::string("SERVICES: ") + service_name(state.service_budget),
+                std::string("TAX: ") + tax_name(state.tax_policy),
+                std::string("VOLUNTEERS: ") + (state.care_first ? "CARE" : "CHAPEL"),
+                "GATHERING (30)", "FOOD DRIVE (25)", "RESET CAMERA",
+                "STEP WEEK"};
+            for (int row = 0; row < static_cast<int>(labels.size()); ++row)
+                draw_button(renderer, option_button(row), labels[static_cast<std::size_t>(row)].c_str());
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 688, "ESC CLOSES MENU");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 708, "KEYS STILL WORK");
+        } else {
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "BUILD TOOLS");
+            for (std::size_t index = 0; index < tools.size(); ++index) {
+                const auto tool = tools[index];
+                const auto rect = tool_button(static_cast<int>(index));
+                fill(renderer, rect, tool == selected ? Color{202, 169, 104} : Color{69, 92, 91});
+                fill(renderer, {rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4},
+                     tool == selected ? Color{93, 91, 66} : Color{43, 65, 65});
+                draw_tool_icon(renderer, tool, rect.x + 24, rect.y + 2,
+                               static_cast<char>('1' + index));
+                SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
+                SDL_RenderDebugText(renderer, rect.x + 8, rect.y + 42, tool_label(tool));
+                SDL_RenderDebugTextFormat(renderer, rect.x + 8, rect.y + 59,
+                                          "%dF", grace::World::cost(tool));
+            }
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 483, "ACTIVE TOOL");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 503, grace::World::name(selected));
+            if (category_for(selected) == ToolCategory::roads) {
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "ROAD NETWORK");
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
+                    "CONNECTED %d", state.connected_roads);
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
+                    "HOMES %d", state.connected_homes);
+            } else if (category_for(selected) == ToolCategory::zones) {
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "DEMAND NOW");
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
+                    "RES %d  COM %d", state.residential_demand,
+                    state.commercial_demand);
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
+                    "IND %d", state.industrial_demand);
+            } else {
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "COMMUNITY");
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
+                    "VOLUNTEERS %d/%d", state.volunteers_used,
+                    state.volunteers_available);
+                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
+                    "CHAPEL %d PANTRY %d", state.active_chapels,
+                    state.active_pantries);
+            }
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 643,
+                                "DRAG ROAD / ZONES");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 663,
+                                "CLICK CIVIC TOOLS");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 688,
+                                "1-7 SHORTCUTS");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 708,
+                                "OPTIONS ABOVE");
+        }
         if (budget_open) {
             fill(renderer, {170, 155, 660, 370}, {29, 45, 46});
             SDL_SetRenderDrawColor(renderer, 246, 221, 154, 255);
@@ -1119,15 +1332,12 @@ int main(int argc, char** argv) {
         if (now >= feedback_until && preview &&
             !preview->is_active_service(hover_x, hover_y))
             hint = "This building would lack volunteers. Grow the town or press V to change priority.";
-        if (now >= feedback_until && !over_tile &&
-            my >= 17 && my < 59 && mx >= margin &&
-            mx < margin + static_cast<int>(tools.size()) * 52) {
-            const int tool = static_cast<int>((mx - margin) / 52);
-            if (mx - margin - tool * 52 < 44) {
-                const auto type = tools[static_cast<std::size_t>(tool)];
-                hint = std::to_string(tool + 1) + " " + grace::World::name(type) +
-                       ": costs " + std::to_string(grace::World::cost(type)) + " funds.";
-            }
+        if (now >= feedback_until && !over_tile && !options_open) {
+            for (std::size_t index = 0; index < tools.size(); ++index)
+                if (contains(tool_button(static_cast<int>(index)), mx, my))
+                    hint = std::string(grace::World::name(tools[index])) +
+                        ": costs " + std::to_string(grace::World::cost(tools[index])) +
+                        " funds. Click to select.";
         }
         SDL_RenderDebugText(renderer, margin, header + map_height + 51, hint.c_str());
         auto demand_bar = [&](int x, const char* label, int demand, Color color) {
@@ -1172,8 +1382,15 @@ int main(int argc, char** argv) {
             world.tile(11, 9) != grace::Tile::commercial_zone ||
             world.tile(13, 9) != grace::Tile::industrial_zone ||
             world.snapshot().tax_policy != grace::TaxPolicy::high ||
-            world.snapshot().treasury != 217)) {
+            world.snapshot().treasury != 217 || !budget_open || options_open)) {
             std::fprintf(stderr, "Zoning toolbar or tax control failed\n");
+            exit_status = 1;
+        }
+        if (toolbar_smoke && (!simulation_started || !paused ||
+            world.snapshot().tax_policy != grace::TaxPolicy::high ||
+            selected != grace::Tile::pantry ||
+            !budget_open || options_open)) {
+            std::fprintf(stderr, "Toolbar and options controls failed\n");
             exit_status = 1;
         }
         if (drag_smoke) {
@@ -1187,7 +1404,8 @@ int main(int argc, char** argv) {
             if (exit_status != 0)
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
-        if (smoke || capture || drag_smoke || zone_smoke || bankrupt_smoke ||
+        if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke ||
+            bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;
         SDL_Delay(16);

@@ -69,5 +69,8 @@ if(GRACE_BUILD_TESTS)
     add_test(NAME grace_zoning_ui_smoke COMMAND grace-valley --zone-smoke)
     set_tests_properties(grace_zoning_ui_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+    add_test(NAME grace_toolbar_ui_smoke COMMAND grace-valley --toolbar-smoke)
+    set_tests_properties(grace_toolbar_ui_smoke PROPERTIES
+      ENVIRONMENT "SDL_VIDEODRIVER=dummy")
   endif()
 endif()

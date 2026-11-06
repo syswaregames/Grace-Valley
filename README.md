@@ -9,7 +9,8 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Action | Control |
 | --- | --- |
 | Select road, residential, commercial, industrial, chapel, pantry, park | `1` through `7` |
-| Select a building with the mouse | Click its icon in the top bar; small numbers show keyboard shortcuts |
+| Select a tool with the mouse | Click any of the seven icons in the two-column right toolbar; small numbers show keyboard shortcuts |
+| Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Inspect chapel or pantry coverage | Select tool `5` or `6` |
 | Prioritize pantry or chapel volunteers | `V` |
 | Host a community gathering | `E` (30 funds) |
@@ -17,8 +18,8 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Place selected building | Left click |
 | Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
 | Paint zoning areas | Select residential (`2`), commercial (`3`), or industrial (`4`); hold left click and drag |
-| Start the weekly simulation / pause or resume | `Space` |
-| Open the budget | `B` (click a policy to select it) |
+| Start the weekly simulation / pause or resume | Click **Play/Pause** or press `Space` |
+| Open the budget | Click **Budget** or press `B` (click a policy to select it) |
 | Cycle giving policy | `G` |
 | Cycle service budget | `O` |
 | Cycle business tax | `T` (low, balanced, high) |
@@ -29,9 +30,9 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Zoom at the pointer | Mouse wheel |
 | Zoom from the center | `+` and `-` |
 | Reset the camera | `R` |
-| Quit | `Esc` |
+| Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
-New games begin in **Setup** with the weekly clock stopped. Build and set the budget before pressing `Space` to begin weekly cashflow. Construction still costs funds during setup. Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and active tool. The lower bar shows access and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
+New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and civic construction still cost funds during setup. Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all seven build tools visible and shows information about the selected tool. The lower bar shows demand, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.
@@ -78,7 +79,7 @@ The first configure downloads SDL3 3.4.18 unless a compatible SDL3 package is al
 
 ## Verification
 
-`ctest` runs rule checks, accelerated town scenarios, and setup, road drag, zoning, and bankruptcy screen smoke tests. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`, `--capture-roads build/roads-preview.png`, `--capture-zones build/zoning-preview.png`, `--capture-budget build/budget-preview.png`, or `--capture-bankrupt build/bankruptcy-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
+`ctest` runs rule checks, accelerated town scenarios, and setup, road drag, zoning toolbar, and bankruptcy screen smoke tests. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`, `--capture-roads build/roads-preview.png`, `--capture-zones build/zoning-preview.png`, `--capture-budget build/budget-preview.png`, `--capture-options build/options-preview.png`, or `--capture-bankrupt build/bankruptcy-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
 
 ## Project layout
 
