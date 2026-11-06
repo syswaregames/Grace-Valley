@@ -23,14 +23,14 @@ References: [SDL3 CMake guide](https://wiki.libsdl.org/SDL3/README-cmake), [SDL3
 ```text
 Input -> commands -> World update (fixed weekly tick) -> snapshot -> renderer/UI
                        |                         |
-                  rules + data              save/load later
+                  rules + data              versioned save/load
 ```
 
 - Use a fixed simulation step independent of frame rate.
 - Make building costs, capacities, and service radii data driven after prototype tuning.
-- Extend the current road graph into path distances before introducing traffic, delivery, or service travel time.
+- Extend the current shortest-road commuter routes with route choice, delivery traffic, and service travel time.
 - Seed random events and record the seed in save files for reproducibility.
-- Version save data and add migration tests before public builds.
+- Keep the current versioned save format compatible or add migration tests before public builds.
 - Keep rendering one way: the UI reads snapshots and issues commands; it does not mutate rules directly.
 
 ## Quality gates

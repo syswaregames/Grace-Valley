@@ -11,6 +11,8 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Select road, residential, commercial, industrial, chapel, pantry, park, power plant | `1` through `8` |
 | Select a tool with the mouse | Click any of the eight icons in the two-column right toolbar; small numbers show keyboard shortcuts |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
+| Save the current town | Click **Save** at the top or press `F5` |
+| Load the saved town | Click **Load** at the top or press `F9` |
 | Inspect chapel or pantry coverage | Select tool `5` or `6` |
 | Prioritize pantry or chapel volunteers | `V` |
 | Host a community gathering | `E` (30 funds) |
@@ -34,6 +36,12 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
 New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all eight build tools visible and shows information about the selected tool. The lower bar shows demand, power, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
+
+### Save and load
+
+Click **Save** or press `F5` to write the current town. Click **Load** or press `F9` to restore it, including the week, finances, buildings, roads and upgrades, household needs, policies, events, camera, selected tool, and Play/Pause state. There is one save slot; saving again replaces it. A missing or incompatible save shows a message and leaves the current town intact.
+
+On Windows the file is `%APPDATA%\SyswareGames\GraceValley\grace-valley.sav`. SDL chooses the equivalent user data folder on macOS and Linux. The file is versioned so future format changes can be detected; the first format is version 1. Save/Load is currently manual, with no autosave or multiple slots.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.

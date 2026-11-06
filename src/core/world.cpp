@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <istream>
+#include <ostream>
 #include <queue>
+#include <string>
 #include <vector>
 
 namespace grace {
@@ -681,5 +684,86 @@ EventError World::host_event(EventKind kind) {
 }
 
 Snapshot World::snapshot() const { return state_; }
+
+bool World::save(std::ostream& output) const {
+    output << "GRACE_VALLEY_WORLD 1\n";
+    output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
+           << static_cast<int>(state_.care_first) << ' '
+           << static_cast<int>(state_.bankrupt) << ' '
+           << static_cast<int>(state_.giving_policy) << ' '
+           << static_cast<int>(state_.service_budget) << ' '
+           << static_cast<int>(state_.tax_policy) << ' '
+           << state_.events_hosted << ' ' << state_.event_weeks_left << ' '
+           << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << '\n';
+    output << width << ' ' << height << '\n';
+    for (std::size_t i = 0; i < tiles_.size(); ++i)
+        output << static_cast<int>(tiles_[i]) << ' '
+               << static_cast<int>(terrain_[i]) << ' '
+               << static_cast<int>(upgraded_roads_[i]) << ' '
+               << needs_[i].belonging << ' ' << needs_[i].care << '\n';
+    return static_cast<bool>(output);
+}
+
+std::optional<World> World::load(std::istream& input) {
+    std::string magic;
+    int version = 0;
+    if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" || version != 1)
+        return std::nullopt;
+    World result;
+    int care_first, bankrupt, giving, services, tax, event_kind;
+    if (!(input >> result.state_.week >> result.state_.population >>
+          result.state_.treasury >> care_first >> bankrupt >> giving >>
+          services >> tax >> result.state_.events_hosted >>
+          result.state_.event_weeks_left >> event_kind >> result.last_event_week_))
+        return std::nullopt;
+    if (result.state_.week < 1 || result.state_.week > 100000000 ||
+        result.state_.population < 0 || result.state_.population > width * height * 4 ||
+        result.state_.treasury < -1000000000 || result.state_.treasury > 1000000000 ||
+        care_first < 0 || care_first > 1 || bankrupt < 0 || bankrupt > 1 ||
+        giving < 0 || giving > 2 || services < 0 || services > 2 ||
+        tax < 0 || tax > 2 || result.state_.events_hosted < 0 ||
+        result.state_.event_weeks_left < 0 || result.state_.event_weeks_left > 2 ||
+        event_kind < 0 || event_kind > 1 ||
+        result.last_event_week_ < -100000000 ||
+        result.last_event_week_ > result.state_.week ||
+        (bankrupt != 0 && result.state_.treasury >= 0))
+        return std::nullopt;
+    result.state_.care_first = care_first != 0;
+    result.state_.bankrupt = bankrupt != 0;
+    result.state_.giving_policy = static_cast<GivingPolicy>(giving);
+    result.state_.service_budget = static_cast<ServiceBudget>(services);
+    result.state_.tax_policy = static_cast<TaxPolicy>(tax);
+    result.state_.event_kind = static_cast<EventKind>(event_kind);
+    const int saved_population = result.state_.population;
+    int saved_width, saved_height;
+    if (!(input >> saved_width >> saved_height) ||
+        saved_width != width || saved_height != height) return std::nullopt;
+    for (std::size_t i = 0; i < result.tiles_.size(); ++i) {
+        int tile, terrain, upgraded, belonging, care;
+        if (!(input >> tile >> terrain >> upgraded >> belonging >> care) ||
+            tile < 0 || tile > static_cast<int>(Tile::power_plant) ||
+            terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
+            upgraded < 0 || upgraded > 1 ||
+            (upgraded && tile != static_cast<int>(Tile::road)) ||
+            belonging < 0 || belonging > 100 || care < 0 || care > 100 ||
+            (terrain == static_cast<int>(Terrain::water) &&
+             tile != static_cast<int>(Tile::meadow))) return std::nullopt;
+        result.tiles_[i] = static_cast<Tile>(tile);
+        result.terrain_[i] = static_cast<Terrain>(terrain);
+        result.upgraded_roads_[i] = upgraded != 0;
+        result.needs_[i] = {belonging, care};
+    }
+    if (result.tile(anchor_x, anchor_y) != Tile::road) return std::nullopt;
+    result.rebuild_connections();
+    result.rebuild_power();
+    result.rebuild_staffing();
+    result.state_ = result.evaluate();
+    result.rebuild_staffing();
+    result.state_ = result.evaluate();
+    result.rebuild_traffic();
+    result.state_ = result.evaluate();
+    if (result.state_.population != saved_population) return std::nullopt;
+    return result;
+}
 
 } // namespace grace

@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstdint>
+#include <iosfwd>
+#include <optional>
 
 namespace grace {
 
@@ -109,6 +111,8 @@ public:
     EventError host_event(EventKind kind = EventKind::gathering);
     void advance_week();
     Snapshot snapshot() const;
+    bool save(std::ostream& output) const;
+    static std::optional<World> load(std::istream& input);
     static int cost(Tile type);
     int cost_at(int x, int y, Tile type) const;
     static const char* name(Tile type);

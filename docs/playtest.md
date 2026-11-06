@@ -13,6 +13,7 @@ This is the remaining human check for M1. It measures clarity and pacing as well
 7. Expand toward the pond and woods. Note whether their rules are clear before placing.
 8. Build enough services to run short of volunteers. Press `V` and watch coverage change.
 9. Host a gathering with `E` and a food drive with `F` when available. Try the camera controls and continue playing until the timer ends.
+10. Press `F5`, make a visible change, then press `F9`. Confirm the earlier town, budget, camera, and paused/running state return.
 
 ## Record
 

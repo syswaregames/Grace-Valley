@@ -8,8 +8,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <limits>
 #include <optional>
 #include <string>
+#include <system_error>
+#include <utility>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -25,6 +36,8 @@ constexpr int window_height = map_height + header + 118;
 constexpr SDL_FRect play_button{625, 17, 102, 42};
 constexpr SDL_FRect budget_button{737, 17, 102, 42};
 constexpr SDL_FRect options_button{849, 17, 102, 42};
+constexpr SDL_FRect save_button{962, 17, 68, 42};
+constexpr SDL_FRect load_button{1038, 17, 68, 42};
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
     return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
@@ -33,6 +46,18 @@ constexpr SDL_FRect tool_button(int index) {
 constexpr SDL_FRect option_button(int row) {
     return {static_cast<float>(sidebar_x + 8), static_cast<float>(190 + row * 48),
             172, 39};
+}
+
+bool replace_save_file(const std::filesystem::path& temporary,
+                       const std::filesystem::path& destination) {
+#ifdef _WIN32
+    return MoveFileExW(temporary.c_str(), destination.c_str(),
+                       MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    std::error_code error;
+    std::filesystem::rename(temporary, destination, error);
+    return !error;
+#endif
 }
 
 struct Camera {
@@ -586,6 +611,7 @@ int main(int argc, char** argv) {
     const bool toolbar_smoke = argc > 1 && std::string(argv[1]) == "--toolbar-smoke";
     const bool power_smoke = argc > 1 && std::string(argv[1]) == "--power-smoke";
     const bool traffic_smoke = argc > 1 && std::string(argv[1]) == "--traffic-smoke";
+    const bool save_smoke = argc > 2 && std::string(argv[1]) == "--save-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
@@ -615,6 +641,12 @@ int main(int argc, char** argv) {
     SDL_SetRenderLogicalPresentation(renderer, window_width, window_height,
                                      SDL_LOGICAL_PRESENTATION_LETTERBOX);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    std::filesystem::path save_file;
+    if (save_smoke) save_file = std::filesystem::path(argv[2]);
+    else if (char* preference_path = SDL_GetPrefPath("SyswareGames", "GraceValley")) {
+        save_file = std::filesystem::u8path(preference_path) / "grace-valley.sav";
+        SDL_free(preference_path);
+    }
     const std::string logo_path = std::string(SDL_GetBasePath()) +
         "assets/Grace Valley Sunrise Church Emblem.png";
     SDL_Surface* logo_surface = SDL_LoadPNG(logo_path.c_str());
@@ -766,6 +798,100 @@ int main(int argc, char** argv) {
         }
         feedback_until = SDL_GetTicks() + 4000;
     };
+    auto save_game = [&] {
+        if (save_file.empty()) {
+            feedback = "The user save folder is unavailable.";
+        } else {
+            std::error_code error;
+            if (!save_file.parent_path().empty())
+                std::filesystem::create_directories(save_file.parent_path(), error);
+            auto temporary = save_file;
+            temporary += ".tmp";
+            bool written = false;
+            if (!error) {
+                std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+                if (output) {
+                    output << "GRACE_VALLEY_GAME 1\n"
+                           << static_cast<int>(paused) << ' '
+                           << static_cast<int>(simulation_started) << ' '
+                           << static_cast<int>(selected) << ' '
+                           << static_cast<int>(upgrade_mode) << ' '
+                           << std::setprecision(std::numeric_limits<float>::max_digits10)
+                           << camera.zoom << ' ' << camera.offset_x << ' '
+                           << camera.offset_y << '\n';
+                    written = world.save(output);
+                    output.flush();
+                    written = written && output.good();
+                    output.close();
+                    written = written && !output.fail();
+                }
+            }
+            if (written && replace_save_file(temporary, save_file))
+                feedback = "Town saved to grace-valley.sav (F5).";
+            else {
+                std::filesystem::remove(temporary, error);
+                feedback = "Could not write the save file.";
+            }
+        }
+        feedback_until = SDL_GetTicks() + 5000;
+    };
+    auto load_game = [&] {
+        if (save_file.empty()) {
+            feedback = "The user save folder is unavailable.";
+        } else {
+            std::ifstream input(save_file, std::ios::binary);
+            if (!input) feedback = "No save found. Press F5 to save your town.";
+            else {
+                std::string magic;
+                int version = 0, saved_paused = 0, saved_started = 0;
+                int saved_tool = 0, saved_upgrade = 0;
+                Camera restored_camera;
+                bool valid = static_cast<bool>(input >> magic >> version >> saved_paused >>
+                    saved_started >> saved_tool >> saved_upgrade >> restored_camera.zoom >>
+                    restored_camera.offset_x >> restored_camera.offset_y);
+                valid = valid && magic == "GRACE_VALLEY_GAME" && version == 1 &&
+                    saved_paused >= 0 && saved_paused <= 1 &&
+                    saved_started >= 0 && saved_started <= 1 &&
+                    saved_upgrade >= 0 && saved_upgrade <= 1 &&
+                    (saved_started || saved_paused) &&
+                    std::isfinite(restored_camera.zoom) &&
+                    std::isfinite(restored_camera.offset_x) &&
+                    std::isfinite(restored_camera.offset_y) &&
+                    restored_camera.zoom >= 0.65f && restored_camera.zoom <= 2.25f &&
+                    std::abs(restored_camera.offset_x) < 100000.0f &&
+                    std::abs(restored_camera.offset_y) < 100000.0f;
+                valid = valid && saved_tool >= 0 &&
+                    saved_tool <= static_cast<int>(grace::Tile::power_plant);
+                const auto tool = static_cast<grace::Tile>(saved_tool);
+                valid = valid && std::find(tools.begin(), tools.end(), tool) != tools.end() &&
+                    (!saved_upgrade || tool == grace::Tile::road);
+                auto restored = valid ? grace::World::load(input) : std::nullopt;
+                if (restored) {
+                    input >> std::ws;
+                    valid = input.peek() == std::char_traits<char>::eof() &&
+                        (!restored->snapshot().bankrupt || saved_paused);
+                } else valid = false;
+                if (!valid) feedback = "Save is damaged or uses an unsupported version.";
+                else {
+                    world = std::move(*restored);
+                    camera = restored_camera;
+                    camera.clamp();
+                    selected = tool;
+                    upgrade_mode = saved_upgrade != 0;
+                    paused = saved_paused != 0;
+                    simulation_started = saved_started != 0;
+                    budget_open = false;
+                    options_open = false;
+                    dragging = false;
+                    painting_tiles = false;
+                    last_week = SDL_GetTicks();
+                    car_animation_ms = 0;
+                    feedback = "Town loaded from grace-valley.sav (F9).";
+                }
+            }
+        }
+        feedback_until = SDL_GetTicks() + 5000;
+    };
     if (bankrupt_smoke) {
         SDL_Event click{};
         click.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -842,6 +968,29 @@ int main(int argc, char** argv) {
         upgrade.button.y = header + 8.5f * base_cell;
         SDL_PushEvent(&upgrade);
     }
+    if (save_smoke) {
+        auto click = [&](Uint8 button, float x, float y) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = button;
+            event.button.x = x;
+            event.button.y = y;
+            SDL_PushEvent(&event);
+        };
+        click(SDL_BUTTON_LEFT, tool_button(7).x + 40, tool_button(7).y + 35);
+        click(SDL_BUTTON_LEFT, margin + 13.5f * base_cell,
+              header + 9.5f * base_cell);
+        click(SDL_BUTTON_LEFT, save_button.x + 34, save_button.y + 20);
+        click(SDL_BUTTON_LEFT, tool_button(0).x + 40, tool_button(0).y + 35);
+        click(SDL_BUTTON_LEFT, margin + 16.5f * base_cell,
+              header + 8.5f * base_cell);
+        click(SDL_BUTTON_LEFT, save_button.x + 34, save_button.y + 20);
+        click(SDL_BUTTON_RIGHT, margin + 16.5f * base_cell,
+              header + 8.5f * base_cell);
+        click(SDL_BUTTON_RIGHT, margin + 13.5f * base_cell,
+              header + 9.5f * base_cell);
+        click(SDL_BUTTON_LEFT, load_button.x + 34, load_button.y + 20);
+    }
     if (drag_smoke) {
         SDL_Event down{};
         down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -895,6 +1044,8 @@ int main(int argc, char** argv) {
                 painting_tiles = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                if (event.key.key == SDLK_F5) { save_game(); continue; }
+                if (event.key.key == SDLK_F9) { load_game(); continue; }
                 if (event.key.key == SDLK_ESCAPE) {
                     if (budget_open) budget_open = false;
                     else if (options_open) options_open = false;
@@ -977,6 +1128,16 @@ int main(int argc, char** argv) {
                 float mx = event.button.x;
                 float my = event.button.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(save_button, mx, my)) {
+                    save_game();
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(load_button, mx, my)) {
+                    load_game();
+                    continue;
+                }
                 if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(play_button, mx, my)) {
                     toggle_play();
@@ -1167,6 +1328,8 @@ int main(int argc, char** argv) {
         draw_button(renderer, play_button, paused ? "PLAY" : "PAUSE", !paused);
         draw_button(renderer, budget_button, "BUDGET", budget_open);
         draw_button(renderer, options_button, "OPTIONS", options_open);
+        draw_button(renderer, save_button, "SAVE");
+        draw_button(renderer, load_button, "LOAD");
         if (logo) {
             const SDL_FRect logo_rect{static_cast<float>(window_width - 82), 3, 64, 64};
             SDL_RenderTexture(renderer, logo, nullptr, &logo_rect);
@@ -1570,6 +1733,14 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "Traffic toolbar or road upgrade failed\n");
             exit_status = 1;
         }
+        if (save_smoke && (world.tile(13, 9) != grace::Tile::power_plant ||
+            world.tile(16, 8) != grace::Tile::road ||
+            world.snapshot().treasury != 215 ||
+            selected != grace::Tile::road || !paused || simulation_started ||
+            !std::filesystem::exists(save_file))) {
+            std::fprintf(stderr, "Save/load round trip failed\n");
+            exit_status = 1;
+        }
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
                 if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;
@@ -1582,7 +1753,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
         if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke || power_smoke ||
-            traffic_smoke ||
+            traffic_smoke || save_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;
@@ -1593,6 +1764,10 @@ int main(int argc, char** argv) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    if (save_smoke) {
+        std::error_code error;
+        std::filesystem::remove(save_file, error);
+    }
     if (soak_seconds > 0) {
         const auto state = world.snapshot();
         std::printf("soak seconds=%d week=%d population=%d joy=%d funds=%d events=%d\n",

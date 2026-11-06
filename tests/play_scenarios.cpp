@@ -1,6 +1,7 @@
 #include "grace/world.hpp"
 
 #include <iostream>
+#include <sstream>
 
 namespace {
 
@@ -83,6 +84,12 @@ int main() {
     if (!run_weeks(costly_budget, 30) || !costly_budget.snapshot().bankrupt)
         return 11;
     report("costly budget", costly_budget);
+    std::stringstream bankrupt_save;
+    if (!costly_budget.save(bankrupt_save)) return 11;
+    auto restored_bankrupt = grace::World::load(bankrupt_save);
+    if (!restored_bankrupt || !restored_bankrupt->snapshot().bankrupt ||
+        restored_bankrupt->snapshot().treasury != costly_budget.snapshot().treasury)
+        return 11;
     const int final_week = costly_budget.snapshot().week;
     costly_budget.advance_week();
     if (costly_budget.snapshot().week != final_week ||

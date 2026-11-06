@@ -5,6 +5,7 @@
 #endif
 #include <cassert>
 #include <iostream>
+#include <sstream>
 
 int main() {
     grace::World world;
@@ -49,6 +50,49 @@ int main() {
     assert(commute.road_capacity(12, 8) == 14);
     assert(commute.snapshot().treasury == funds_before_upgrade - 20);
     assert(commute.snapshot().congested_roads == jams_before_upgrade - 1);
+    std::stringstream saved_commute;
+    assert(commute.save(saved_commute));
+    auto restored_commute = grace::World::load(saved_commute);
+    assert(restored_commute);
+    assert(restored_commute->snapshot().week == commute.snapshot().week);
+    assert(restored_commute->snapshot().treasury == commute.snapshot().treasury);
+    assert(restored_commute->snapshot().congested_roads == commute.snapshot().congested_roads);
+    assert(restored_commute->traffic_at(12, 8) == commute.traffic_at(12, 8));
+    assert(restored_commute->is_upgraded_road(12, 8));
+    commute.advance_week();
+    restored_commute->advance_week();
+    assert(restored_commute->snapshot().treasury == commute.snapshot().treasury);
+    assert(restored_commute->snapshot().population == commute.snapshot().population);
+    assert(restored_commute->snapshot().happiness == commute.snapshot().happiness);
+    std::stringstream unsupported("GRACE_VALLEY_WORLD 999");
+    assert(!grace::World::load(unsupported));
+    std::stringstream truncated("GRACE_VALLEY_WORLD 1\n1 0");
+    assert(!grace::World::load(truncated));
+    grace::World policy_save;
+    assert(policy_save.place(13, 9, grace::Tile::power_plant));
+    policy_save.set_giving_policy(grace::GivingPolicy::ambitious);
+    policy_save.set_service_budget(grace::ServiceBudget::generous);
+    policy_save.set_tax_policy(grace::TaxPolicy::high);
+    policy_save.set_care_priority(true);
+    policy_save.advance_week();
+    policy_save.advance_week();
+    assert(policy_save.host_event(grace::EventKind::gathering) == grace::EventError::none);
+    std::stringstream policy_file;
+    assert(policy_save.save(policy_file));
+    auto restored_policy = grace::World::load(policy_file);
+    assert(restored_policy);
+    assert(restored_policy->snapshot().giving_policy == grace::GivingPolicy::ambitious);
+    assert(restored_policy->snapshot().service_budget == grace::ServiceBudget::generous);
+    assert(restored_policy->snapshot().tax_policy == grace::TaxPolicy::high);
+    assert(restored_policy->snapshot().care_first);
+    assert(restored_policy->snapshot().event_weeks_left == 2);
+    assert(restored_policy->snapshot().event_cooldown == policy_save.snapshot().event_cooldown);
+    assert(restored_policy->terrain(20, 4) == grace::Terrain::water);
+    policy_save.advance_week();
+    restored_policy->advance_week();
+    assert(restored_policy->snapshot().treasury == policy_save.snapshot().treasury);
+    assert(restored_policy->household_needs(10, 7).care ==
+           policy_save.household_needs(10, 7).care);
     assert(!commute.upgrade_road(12, 8));
     assert(commute.upgrade_road(11, 8));
     assert(commute.remove(11, 8));

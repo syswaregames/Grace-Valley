@@ -47,4 +47,4 @@ An inviting isometric 2.5D town with readable silhouettes, warm windows, gardens
 
 ## First playable boundaries
 
-Desktop single player, mouse and keyboard, one fixed map, no combat, no online services. The first slice favors a fast build and clear feedback over realistic economics. Numbers and rules are temporary tuning values. Save/load, detailed terrain, road travel distances, seasonal events, and a full UI belong to later milestones.
+Desktop single player, mouse and keyboard, one fixed map, no combat, no online services. The first slice favors a fast build and clear feedback over realistic economics. Numbers and rules are temporary tuning values. A versioned, manual single-slot save is available; autosave and multiple slots remain future work. Detailed terrain, richer route choices, seasonal events, and a full UI belong to later milestones.
