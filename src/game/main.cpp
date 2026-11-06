@@ -315,14 +315,18 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
     switch (type) {
     case grace::Tile::road: {
         const unsigned sides = road_sides(world, x, y);
-        const bool upgraded = world.is_upgraded_road(x, y);
+        const int level = world.road_level(x, y);
         const int traffic = world.traffic_at(x, y);
         const int capacity = world.road_capacity(x, y);
         const bool busy = traffic > capacity;
-        const Color curb = upgraded ? Color{162, 184, 188} : Color{188, 169, 135};
+        const Color curb = level == 0 ? Color{188, 169, 135} :
+            level == 1 ? Color{162, 184, 188} :
+            level == 2 ? Color{171, 185, 149} : Color{210, 176, 107};
         const Color street = busy ? (traffic > capacity * 2
             ? Color{172, 76, 68} : Color{176, 120, 63}) :
-            upgraded ? Color{76, 97, 110} : Color{111, 111, 105};
+            level == 0 ? Color{111, 111, 105} :
+            level == 1 ? Color{76, 97, 110} :
+            level == 2 ? Color{77, 91, 88} : Color{72, 77, 91};
         const Color marking{231, 216, 171};
         shape(7, 7, 26, 26, curb);
         if (sides & north) shape(7, 0, 26, 20, curb);
@@ -352,9 +356,26 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
             shape(19, 3, 2, 7, marking);
             shape(19, 30, 2, 7, marking);
         }
-        if (upgraded) {
+        if (level > 0) {
             if (sides & (east | west)) shape(0, 19, 40, 2, {217, 226, 219});
             else shape(19, 0, 2, 40, {217, 226, 219});
+        }
+        if (level > 1) {
+            const Color lane = level == 2 ? Color{194, 217, 184} : Color{248, 207, 110};
+            if (sides & (east | west)) {
+                shape(0, 14, 40, 1, lane);
+                shape(0, 25, 40, 1, lane);
+            } else {
+                shape(14, 0, 1, 40, lane);
+                shape(25, 0, 1, 40, lane);
+            }
+        }
+        if (level > 0 && scale >= 0.85f) {
+            shape(1, 1, 11, 11, level == 1 ? Color{76, 97, 110} :
+                level == 2 ? Color{77, 105, 79} : Color{144, 106, 58});
+            SDL_SetRenderDrawColor(renderer, 250, 239, 205, 255);
+            const char badge[]{level == 1 ? 'A' : level == 2 ? 'B' : 'T', '\0'};
+            SDL_RenderDebugText(renderer, px + 2 * scale, py + 2 * scale, badge);
         }
         if (traffic > 0) {
             const int count = std::min(traffic, 2);
@@ -677,6 +698,12 @@ int main(int argc, char** argv) {
         world.place(12, 10, grace::Tile::road);
         world.place(12, 9, grace::Tile::road);
         world.place(13, 9, grace::Tile::road);
+        world.upgrade_road(10, 8);
+        world.upgrade_road(11, 8);
+        world.upgrade_road(11, 8);
+        world.upgrade_road(12, 8);
+        world.upgrade_road(12, 8);
+        world.upgrade_road(12, 8);
     }
     if (capture_zones) {
         world.place(9, 7, grace::Tile::residential_zone);
@@ -1211,7 +1238,7 @@ int main(int argc, char** argv) {
                                 if (upgrade_mode) selected = grace::Tile::road;
                                 painting_tiles = false;
                                 feedback = upgrade_mode
-                                    ? "Road upgrade: click a road tile for 20 funds, +1 weekly upkeep."
+                                    ? "Road upgrade: click a road tile to advance one level."
                                     : "Road upgrade mode off.";
                                 feedback_until = SDL_GetTicks() + 4000;
                             }
@@ -1235,13 +1262,18 @@ int main(int argc, char** argv) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
                         if (upgrade_mode || (SDL_GetModState() & SDL_KMOD_SHIFT)) {
                             painting_tiles = false;
+                            const int price = world.next_road_upgrade_cost(x, y);
                             if (world.upgrade_road(x, y))
-                                feedback = "Road upgraded: capacity 14, cost 20 funds, +1 weekly upkeep.";
+                                feedback = std::string("Road upgraded to ") +
+                                    grace::World::road_level_name(world.road_level(x, y)) +
+                                    ": capacity " + std::to_string(world.road_capacity(x, y)) +
+                                    ", cost " + std::to_string(price) + " funds.";
                             else if (world.tile(x, y) != grace::Tile::road)
                                 feedback = "Choose an existing road tile to upgrade.";
-                            else if (world.is_upgraded_road(x, y))
-                                feedback = "This road is already upgraded.";
-                            else feedback = "A road upgrade needs 20 funds.";
+                            else if (price == 0)
+                                feedback = "This road is already at its highest level.";
+                            else feedback = "Next road upgrade needs " +
+                                std::to_string(price) + " funds.";
                             feedback_until = SDL_GetTicks() + 4000;
                             continue;
                         }
@@ -1395,7 +1427,8 @@ int main(int argc, char** argv) {
         if (over_tile) {
             const bool valid = upgrade_mode
                 ? world.tile(hover_x, hover_y) == grace::Tile::road &&
-                  !world.is_upgraded_road(hover_x, hover_y) && state.treasury >= 20
+                  world.next_road_upgrade_cost(hover_x, hover_y) > 0 &&
+                  state.treasury >= world.next_road_upgrade_cost(hover_x, hover_y)
                 : world.can_place(hover_x, hover_y, selected) || stroke_start;
             const Color preview = valid
                 ? Color{253, 229, 153} : Color{225, 91, 83};
@@ -1447,11 +1480,11 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 503,
                                 upgrade_mode ? "Road upgrade" : grace::World::name(selected));
             if (category_for(selected) == ToolCategory::roads) {
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "ROAD NETWORK");
-                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
-                    "CONNECTED %d", state.connected_roads);
-                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
-                    "HOMES %d", state.connected_homes);
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "FOUR ROAD LEVELS");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 564,
+                                    "LOCAL 6  AVE 14");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 584,
+                                    "BLVD 24  ART 36");
             } else if (category_for(selected) == ToolCategory::zones) {
                 SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "DEMAND NOW");
                 SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
@@ -1478,7 +1511,7 @@ int main(int argc, char** argv) {
             }
             SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 603,
                 "JAMS %d  PEAK %d", state.congested_roads, state.peak_traffic);
-            draw_button(renderer, upgrade_button, "UPGRADE ROAD 20F", upgrade_mode);
+            draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
                                 "DRAG ROAD / ZONES");
@@ -1621,10 +1654,14 @@ int main(int argc, char** argv) {
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);
             if (hovered == grace::Tile::road) {
-                hint = "Road traffic " + std::to_string(world.traffic_at(hover_x, hover_y)) +
+                const int road_level = world.road_level(hover_x, hover_y);
+                const int next_cost = world.next_road_upgrade_cost(hover_x, hover_y);
+                hint = std::string(grace::World::road_level_name(road_level)) +
+                    " traffic " + std::to_string(world.traffic_at(hover_x, hover_y)) +
                     "/" + std::to_string(world.road_capacity(hover_x, hover_y)) +
-                    (world.is_upgraded_road(hover_x, hover_y)
-                        ? ". Upgraded road." : ". Press U, then click to upgrade for 20 funds.");
+                    (next_cost == 0 ? ". Highest level." :
+                        ". Press U, then click to upgrade for " +
+                        std::to_string(next_cost) + " funds.");
             }
             if (hovered == grace::Tile::residential_zone ||
                 hovered == grace::Tile::commercial_zone ||

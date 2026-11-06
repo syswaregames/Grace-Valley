@@ -89,6 +89,9 @@ public:
     bool is_powered(int x, int y) const;
     int traffic_at(int x, int y) const;
     int road_capacity(int x, int y) const;
+    int road_level(int x, int y) const;
+    int next_road_upgrade_cost(int x, int y) const;
+    static const char* road_level_name(int level);
     bool is_upgraded_road(int x, int y) const;
     bool is_active_service(int x, int y) const;
     HouseholdNeeds household_needs(int x, int y) const;
@@ -122,7 +125,7 @@ private:
     std::array<Terrain, width * height> terrain_{};
     std::array<bool, width * height> connected_{};
     std::array<bool, width * height> powered_{};
-    std::array<bool, width * height> upgraded_roads_{};
+    std::array<std::uint8_t, width * height> road_levels_{};
     std::array<int, width * height> traffic_{};
     std::array<bool, width * height> staffed_{};
     std::array<HouseholdNeeds, width * height> needs_{};

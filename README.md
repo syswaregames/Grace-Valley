@@ -41,7 +41,7 @@ New games begin in **Setup** with the weekly clock stopped. Lay out roads and zo
 
 Click **Save** or press `F5` to write the current town. Click **Load** or press `F9` to restore it, including the week, finances, buildings, roads and upgrades, household needs, policies, events, camera, selected tool, and Play/Pause state. There is one save slot; saving again replaces it. A missing or incompatible save shows a message and leaves the current town intact.
 
-On Windows the file is `%APPDATA%\SyswareGames\GraceValley\grace-valley.sav`. SDL chooses the equivalent user data folder on macOS and Linux. The file is versioned so future format changes can be detected; the first format is version 1. Save/Load is currently manual, with no autosave or multiple slots.
+On Windows the file is `%APPDATA%\SyswareGames\GraceValley\grace-valley.sav`. SDL chooses the equivalent user data folder on macOS and Linux. The file is versioned; towns saved with the earlier two-level road format still load. Save/Load is currently manual, with no autosave or multiple slots.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.
@@ -50,7 +50,16 @@ Start a road stroke on a placeable tile or any existing road. Dragging builds ea
 
 Residents commute from powered homes to powered shops and workshops along connected roads. Small cars show the resulting flow. Each ordinary road tile handles 6 trips; overloaded tiles turn **amber**, then **red** at more than twice their capacity. The top bar reports traffic alerts, the sidebar shows the number of hotspots and peak flow, and hovering a road shows its traffic and capacity. Each congested tile lowers town happiness by 2, up to a 12-point penalty.
 
-Click **Upgrade Road** in the sidebar or press `U`, then click a road tile to increase its capacity to 14. `Shift` + left click upgrades directly. An upgrade costs 20 funds plus 1 fund in weekly upkeep. A busy corridor may need several upgraded tiles. Right clicking removes a road and its upgrade. Road upgrades are an early traffic solution; commuters currently choose a shortest road route, so parallel streets may need later route-choice tuning.
+Click **Upgrade Road** in the sidebar or press `U`, then click a road tile to advance it one level. `Shift` + left click upgrades directly. Each level has a distinct surface and badge:
+
+| Road level | Trip capacity | Cost to build or upgrade | Added weekly upkeep per tile |
+| --- | ---: | ---: | ---: |
+| Local road | 6 | 5 to build | 0 |
+| Avenue | 14 | 20 from Local | 1 |
+| Boulevard | 24 | 35 from Avenue | 3 |
+| Arterial | 36 | 55 from Boulevard | 6 |
+
+The usual road network upkeep also applies. A busy corridor may need several upgraded tiles. Right clicking removes a road and all its upgrades. Commuters currently choose a shortest road route, so parallel streets may need later route-choice tuning.
 
 ### Zoning and demand
 

@@ -46,9 +46,13 @@ int main() {
     assert(commute.snapshot().congested_roads > 0);
     const int jams_before_upgrade = commute.snapshot().congested_roads;
     const int funds_before_upgrade = commute.snapshot().treasury;
+    const int upkeep_before_upgrade = commute.snapshot().weekly_upkeep;
     assert(commute.upgrade_road(12, 8));
+    assert(commute.road_level(12, 8) == 1);
     assert(commute.road_capacity(12, 8) == 14);
+    assert(commute.next_road_upgrade_cost(12, 8) == 35);
     assert(commute.snapshot().treasury == funds_before_upgrade - 20);
+    assert(commute.snapshot().weekly_upkeep == upkeep_before_upgrade + 1);
     assert(commute.snapshot().congested_roads == jams_before_upgrade - 1);
     std::stringstream saved_commute;
     assert(commute.save(saved_commute));
@@ -59,6 +63,12 @@ int main() {
     assert(restored_commute->snapshot().congested_roads == commute.snapshot().congested_roads);
     assert(restored_commute->traffic_at(12, 8) == commute.traffic_at(12, 8));
     assert(restored_commute->is_upgraded_road(12, 8));
+    std::string legacy_text = saved_commute.str();
+    legacy_text.replace(legacy_text.find("GRACE_VALLEY_WORLD 2"),
+                        sizeof("GRACE_VALLEY_WORLD 2") - 1, "GRACE_VALLEY_WORLD 1");
+    std::stringstream legacy_save(legacy_text);
+    auto restored_legacy = grace::World::load(legacy_save);
+    assert(restored_legacy && restored_legacy->road_level(12, 8) == 1);
     commute.advance_week();
     restored_commute->advance_week();
     assert(restored_commute->snapshot().treasury == commute.snapshot().treasury);
@@ -93,7 +103,27 @@ int main() {
     assert(restored_policy->snapshot().treasury == policy_save.snapshot().treasury);
     assert(restored_policy->household_needs(10, 7).care ==
            policy_save.household_needs(10, 7).care);
+    const int avenue_funds = commute.snapshot().treasury;
+    const int avenue_upkeep = commute.snapshot().weekly_upkeep;
+    assert(commute.upgrade_road(12, 8));
+    assert(commute.road_level(12, 8) == 2);
+    assert(commute.road_capacity(12, 8) == 24);
+    assert(commute.snapshot().treasury == avenue_funds - 35);
+    assert(commute.snapshot().weekly_upkeep == avenue_upkeep + 2);
+    assert(commute.next_road_upgrade_cost(12, 8) == 55);
+    const int boulevard_funds = commute.snapshot().treasury;
+    const int boulevard_upkeep = commute.snapshot().weekly_upkeep;
+    assert(commute.upgrade_road(12, 8));
+    assert(commute.road_level(12, 8) == 3);
+    assert(commute.road_capacity(12, 8) == 36);
+    assert(commute.snapshot().treasury == boulevard_funds - 55);
+    assert(commute.snapshot().weekly_upkeep == boulevard_upkeep + 3);
+    assert(commute.next_road_upgrade_cost(12, 8) == 0);
     assert(!commute.upgrade_road(12, 8));
+    std::stringstream arterial_save;
+    assert(commute.save(arterial_save));
+    auto restored_arterial = grace::World::load(arterial_save);
+    assert(restored_arterial && restored_arterial->road_level(12, 8) == 3);
     assert(commute.upgrade_road(11, 8));
     assert(commute.remove(11, 8));
     assert(!commute.is_upgraded_road(11, 8));
