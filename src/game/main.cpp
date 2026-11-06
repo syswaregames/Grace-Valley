@@ -315,6 +315,7 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
     switch (type) {
     case grace::Tile::road: {
         const unsigned sides = road_sides(world, x, y);
+        const bool bridge = terrain == grace::Terrain::water;
         const int level = world.road_level(x, y);
         const int traffic = world.traffic_at(x, y);
         const int capacity = world.road_capacity(x, y);
@@ -368,6 +369,17 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
             } else {
                 shape(14, 0, 1, 40, lane);
                 shape(25, 0, 1, 40, lane);
+            }
+        }
+        if (bridge) {
+            const Color rail{233, 218, 179};
+            if (sides & (east | west)) {
+                shape(0, 5, 40, 3, rail);
+                shape(0, 32, 40, 3, rail);
+            }
+            if (sides & (north | south)) {
+                shape(5, 0, 3, 40, rail);
+                shape(32, 0, 3, 40, rail);
             }
         }
         if (level > 0 && scale >= 0.85f) {
@@ -472,7 +484,7 @@ const char* placement_message(grace::PlacementError error) {
     switch (error) {
     case grace::PlacementError::out_of_bounds: return "Choose a tile inside the valley.";
     case grace::PlacementError::occupied: return "That tile is occupied. Right click to clear it.";
-    case grace::PlacementError::water: return "Water blocks construction. Build around the pond.";
+    case grace::PlacementError::water: return "Buildings need land. Use the Road tool to bridge water.";
     case grace::PlacementError::insufficient_funds: return "Not enough funds for that building.";
     case grace::PlacementError::needs_road: return "Build beside a connected road.";
     case grace::PlacementError::needs_connection: return "Build beside any existing road.";
@@ -597,13 +609,14 @@ bool is_zone(grace::Tile type) {
            type == grace::Tile::industrial_zone;
 }
 
-struct PaintResult { int added; int x; int y; };
+struct PaintResult { int added; int bridges; int x; int y; };
 
 PaintResult paint_segment(grace::World& world, grace::Tile type,
                           int from_x, int from_y, int target_x, int target_y) {
     int x = from_x;
     int y = from_y;
     int added = 0;
+    int bridges = 0;
     auto passable = [&](int next_x, int next_y) {
         return world.tile(next_x, next_y) == type ||
                world.can_place(next_x, next_y, type);
@@ -618,9 +631,16 @@ PaintResult paint_segment(grace::World& world, grace::Tile type,
         if (!horizontal && !vertical) break;
         if (horizontal && (!vertical || std::abs(dx) >= std::abs(dy))) x += step_x;
         else y += step_y;
-        if (world.tile(x, y) != type && world.place(x, y, type)) ++added;
+        if (world.tile(x, y) != type) {
+            const bool over_water = type == grace::Tile::road &&
+                world.terrain(x, y) == grace::Terrain::water;
+            if (world.place(x, y, type)) {
+                ++added;
+                bridges += over_water;
+            }
+        }
     }
-    return {added, x, y};
+    return {added, bridges, x, y};
 }
 
 } // namespace
@@ -628,6 +648,7 @@ PaintResult paint_segment(grace::World& world, grace::Tile type,
 int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
+    const bool bridge_smoke = argc > 1 && std::string(argv[1]) == "--bridge-smoke";
     const bool zone_smoke = argc > 1 && std::string(argv[1]) == "--zone-smoke";
     const bool toolbar_smoke = argc > 1 && std::string(argv[1]) == "--toolbar-smoke";
     const bool power_smoke = argc > 1 && std::string(argv[1]) == "--power-smoke";
@@ -635,13 +656,14 @@ int main(int argc, char** argv) {
     const bool save_smoke = argc > 2 && std::string(argv[1]) == "--save-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
+    const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
-        (std::string(argv[1]) == "--capture" || capture_roads ||
+        (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
          capture_budget || capture_options || capture_zones || capture_traffic ||
          capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
@@ -705,6 +727,11 @@ int main(int argc, char** argv) {
         world.upgrade_road(12, 8);
         world.upgrade_road(12, 8);
     }
+    if (capture_bridge) {
+        for (int x : {16, 17}) world.place(x, 8, grace::Tile::road);
+        for (int y : {7, 6, 5, 4}) world.place(17, y, grace::Tile::road);
+        for (int x = 18; x <= 23; ++x) world.place(x, 4, grace::Tile::road);
+    }
     if (capture_zones) {
         world.place(9, 7, grace::Tile::residential_zone);
         world.place(11, 9, grace::Tile::commercial_zone);
@@ -727,7 +754,7 @@ int main(int argc, char** argv) {
     }
     Camera camera;
     grace::Tile selected = capture_zones ? grace::Tile::residential_zone :
-        capture && !capture_roads && !capture_budget &&
+        capture && !capture_roads && !capture_bridge && !capture_budget &&
         !capture_options && !capture_traffic && !capture_bankrupt
             ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
@@ -1057,6 +1084,29 @@ int main(int argc, char** argv) {
         SDL_PushEvent(&repair_motion);
         click(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT, 11, 10);
     }
+    if (bridge_smoke) {
+        SDL_Event down{};
+        down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        down.button.button = SDL_BUTTON_LEFT;
+        down.button.x = margin + 16.5f * base_cell;
+        down.button.y = header + 8.5f * base_cell;
+        SDL_PushEvent(&down);
+        SDL_Event motion{};
+        motion.type = SDL_EVENT_MOUSE_MOTION;
+        for (const auto& target : {std::array<int, 2>{17, 8},
+                                   std::array<int, 2>{17, 4},
+                                   std::array<int, 2>{23, 4}}) {
+            motion.motion.x = margin + (target[0] + 0.5f) * base_cell;
+            motion.motion.y = header + (target[1] + 0.5f) * base_cell;
+            SDL_PushEvent(&motion);
+        }
+        SDL_Event up{};
+        up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+        up.button.button = SDL_BUTTON_LEFT;
+        up.button.x = motion.motion.x;
+        up.button.y = motion.motion.y;
+        SDL_PushEvent(&up);
+    }
 
     while (running) {
         SDL_Event event;
@@ -1139,8 +1189,11 @@ int main(int argc, char** argv) {
                     paint_y = result.y;
                     if (result.added > 0) {
                         feedback = std::to_string(result.added) +
-                                   (selected == grace::Tile::road ? " road tiles built for " :
-                                    " zone tiles marked for ") +
+                                   (selected == grace::Tile::road ?
+                                        (result.bridges > 0 ?
+                                            " road tiles including bridges built for " :
+                                            " road tiles built for ") :
+                                        " zone tiles marked for ") +
                                    std::to_string(before - world.snapshot().treasury) + " funds.";
                         feedback_until = SDL_GetTicks() + 2500;
                     }
@@ -1297,7 +1350,9 @@ int main(int argc, char** argv) {
                             const bool zoning = selected == grace::Tile::residential_zone ||
                                 selected == grace::Tile::commercial_zone ||
                                 selected == grace::Tile::industrial_zone;
-                            feedback = std::string(grace::World::name(selected)) +
+                            const bool bridge = selected == grace::Tile::road &&
+                                world.terrain(x, y) == grace::Terrain::water;
+                            feedback = std::string(bridge ? "Bridge" : grace::World::name(selected)) +
                                 (zoning ? " marked for " : " built for ") +
                                 std::to_string(price) + " funds.";
                         } else feedback = placement_message(error);
@@ -1390,9 +1445,9 @@ int main(int argc, char** argv) {
 
         float mx, my;
         if (capture) {
-            mx = margin + (capture_traffic ? 12.5f :
+            mx = margin + (capture_bridge ? 20.5f : capture_traffic ? 12.5f :
                 capture_roads || capture_zones ? 10.5f : 11.5f) * base_cell;
-            my = header + (capture_traffic ? 8.5f : 9.5f) * base_cell;
+            my = header + (capture_bridge ? 5.5f : capture_traffic ? 8.5f : 9.5f) * base_cell;
         } else {
             SDL_GetMouseState(&mx, &my);
             SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
@@ -1521,7 +1576,7 @@ int main(int argc, char** argv) {
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
-                                "DRAG ROAD / ZONES");
+                                "DRAG ROAD / BRIDGE");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 691,
                                 "1-8 SHORTCUTS");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
@@ -1645,6 +1700,13 @@ int main(int argc, char** argv) {
                    ", demand " + std::to_string(demand) +
                    "/100. Needs a connected road, power, and 25 demand to develop.";
         }
+        if (now >= feedback_until && over_tile && selected == grace::Tile::road &&
+            world.terrain(hover_x, hover_y) == grace::Terrain::water &&
+            world.tile(hover_x, hover_y) == grace::Tile::meadow)
+            hint = world.can_place(hover_x, hover_y, grace::Tile::road)
+                ? "Bridge: 25 funds, +1 upkeep. Drag from a road across water."
+                : placement_message(world.placement_error(hover_x, hover_y,
+                                                          grace::Tile::road));
         if (now >= feedback_until && over_tile && world.can_place(hover_x, hover_y, selected) &&
             world.terrain(hover_x, hover_y) == grace::Terrain::woods)
             hint = "Woods will be cleared: +10 funds. Total " +
@@ -1663,7 +1725,9 @@ int main(int argc, char** argv) {
             if (hovered == grace::Tile::road) {
                 const int road_level = world.road_level(hover_x, hover_y);
                 const int next_cost = world.next_road_upgrade_cost(hover_x, hover_y);
-                hint = std::string(grace::World::road_level_name(road_level)) +
+                hint = std::string(world.terrain(hover_x, hover_y) ==
+                    grace::Terrain::water ? "Bridge: " : "") +
+                    grace::World::road_level_name(road_level) +
                     " traffic " + std::to_string(world.traffic_at(hover_x, hover_y)) +
                     "/" + std::to_string(world.road_capacity(hover_x, hover_y)) +
                     (next_cost == 0 ? ". Highest level." :
@@ -1798,7 +1862,13 @@ int main(int argc, char** argv) {
             if (exit_status != 0)
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
-        if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke || power_smoke ||
+        if (bridge_smoke && (world.tile(20, 4) != grace::Tile::road ||
+            world.terrain(20, 4) != grace::Terrain::water ||
+            !world.is_connected(23, 4) || world.snapshot().treasury != 100)) {
+            std::fprintf(stderr, "Bridge drag smoke test failed\n");
+            exit_status = 1;
+        }
+        if (smoke || capture || drag_smoke || bridge_smoke || zone_smoke || toolbar_smoke || power_smoke ||
             traffic_smoke || save_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))

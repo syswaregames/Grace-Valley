@@ -369,7 +369,9 @@ int World::cost(Tile type) {
 }
 
 int World::cost_at(int x, int y, Tile type) const {
-    return cost(type) + (inside(x, y) && terrain(x, y) == Terrain::woods ? 10 : 0);
+    return cost(type) + (inside(x, y) && terrain(x, y) == Terrain::woods ? 10 : 0) +
+           (inside(x, y) && terrain(x, y) == Terrain::water && type == Tile::road
+                ? 20 : 0);
 }
 
 const char* World::name(Tile type) {
@@ -424,7 +426,8 @@ PlacementError World::placement_error(int x, int y, Tile type) const {
     if (type == Tile::meadow || type == Tile::commercial ||
         type == Tile::industrial || tile(x, y) != Tile::meadow)
         return PlacementError::occupied;
-    if (terrain(x, y) == Terrain::water) return PlacementError::water;
+    if (terrain(x, y) == Terrain::water && type != Tile::road)
+        return PlacementError::water;
     if (state_.treasury < cost_at(x, y, type)) return PlacementError::insufficient_funds;
     const bool zone = type == Tile::residential_zone ||
                       type == Tile::commercial_zone || type == Tile::industrial_zone;
@@ -441,7 +444,8 @@ bool World::place(int x, int y, Tile type) {
     if (!can_place(x, y, type)) return false;
     tiles_[index(x, y)] = type;
     state_.treasury -= cost_at(x, y, type);
-    terrain_[index(x, y)] = Terrain::grass;
+    if (terrain_[index(x, y)] != Terrain::water)
+        terrain_[index(x, y)] = Terrain::grass;
     rebuild_connections();
     rebuild_power();
     rebuild_staffing();
@@ -501,6 +505,7 @@ Snapshot World::evaluate() const {
     int park_exposure = 0;
     int homes = 0;
     int roads = 0;
+    int bridges = 0;
     int all_shops = 0;
     int all_workshops = 0;
     int chapels = 0;
@@ -514,6 +519,7 @@ Snapshot World::evaluate() const {
             switch (tile(x, y)) {
             case Tile::road:
                 ++roads;
+                bridges += terrain(x, y) == Terrain::water;
                 road_upgrade_upkeep += road_upkeep[road_levels_[index(x, y)]];
                 if (connected_[index(x, y)]) ++next.connected_roads;
                 next.peak_traffic = std::max(next.peak_traffic, traffic_[index(x, y)]);
@@ -576,6 +582,7 @@ Snapshot World::evaluate() const {
     next.building_upkeep = homes + (roads + 2) / 3 +
                            all_shops * 2 + all_workshops * 3;
     next.building_upkeep += plants * 6;
+    next.building_upkeep += bridges;
     next.building_upkeep += road_upgrade_upkeep;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
@@ -782,7 +789,8 @@ std::optional<World> World::load(std::istream& input) {
             (upgraded && tile != static_cast<int>(Tile::road)) ||
             belonging < 0 || belonging > 100 || care < 0 || care > 100 ||
             (terrain == static_cast<int>(Terrain::water) &&
-             tile != static_cast<int>(Tile::meadow))) return std::nullopt;
+             tile != static_cast<int>(Tile::meadow) &&
+             tile != static_cast<int>(Tile::road))) return std::nullopt;
         result.tiles_[i] = static_cast<Tile>(tile);
         result.terrain_[i] = static_cast<Terrain>(terrain);
         result.road_levels_[i] = static_cast<std::uint8_t>(upgraded);

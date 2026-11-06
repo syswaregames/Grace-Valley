@@ -63,6 +63,9 @@ if(GRACE_BUILD_TESTS)
     add_test(NAME grace_drag_smoke COMMAND grace-valley --drag-smoke)
     set_tests_properties(grace_drag_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+    add_test(NAME grace_bridge_smoke COMMAND grace-valley --bridge-smoke)
+    set_tests_properties(grace_bridge_smoke PROPERTIES
+      ENVIRONMENT "SDL_VIDEODRIVER=dummy")
     add_test(NAME grace_bankruptcy_ui_smoke COMMAND grace-valley --bankrupt-smoke)
     set_tests_properties(grace_bankruptcy_ui_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")

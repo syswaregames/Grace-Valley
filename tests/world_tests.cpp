@@ -10,7 +10,10 @@
 int main() {
     grace::World world;
     assert(world.terrain(20, 4) == grace::Terrain::water);
-    assert(world.placement_error(20, 4, grace::Tile::road) == grace::PlacementError::water);
+    assert(world.placement_error(20, 4, grace::Tile::road) ==
+           grace::PlacementError::needs_connection);
+    assert(world.placement_error(20, 4, grace::Tile::chapel) ==
+           grace::PlacementError::water);
     assert(world.terrain(17, 10) == grace::Terrain::woods);
     assert(world.cost_at(17, 10, grace::Tile::road) == grace::World::cost(grace::Tile::road) + 10);
     const auto start = world.snapshot();
@@ -25,6 +28,36 @@ int main() {
     assert(start.weekly_income == start.grant_income + start.giving_income);
     assert(start.weekly_upkeep == start.building_upkeep + start.service_upkeep +
                                   start.community_upkeep);
+    grace::World bridge;
+    for (int x : {16, 17}) assert(bridge.place(x, 8, grace::Tile::road));
+    for (int y : {7, 6, 5, 4}) assert(bridge.place(17, y, grace::Tile::road));
+    assert(bridge.cost_at(18, 4, grace::Tile::road) == 25);
+    const int before_bridge = bridge.snapshot().treasury;
+    for (int x = 18; x <= 22; ++x)
+        assert(bridge.place(x, 4, grace::Tile::road));
+    assert(bridge.snapshot().treasury == before_bridge - 125);
+    assert(bridge.terrain(20, 4) == grace::Terrain::water);
+    assert(bridge.is_connected(20, 4));
+    assert(bridge.place(23, 4, grace::Tile::road));
+    assert(bridge.is_connected(23, 4));
+    assert(bridge.place(23, 3, grace::Tile::power_plant));
+    assert(bridge.place(23, 5, grace::Tile::residential_zone));
+    assert(bridge.is_powered(23, 5));
+    assert(bridge.is_powered(10, 7));
+    bridge.advance_week();
+    assert(bridge.tile(23, 5) == grace::Tile::home);
+    std::stringstream bridge_file;
+    assert(bridge.save(bridge_file));
+    auto restored_bridge = grace::World::load(bridge_file);
+    assert(restored_bridge && restored_bridge->is_connected(23, 4));
+    assert(restored_bridge->terrain(20, 4) == grace::Terrain::water);
+    assert(restored_bridge->tile(20, 4) == grace::Tile::road);
+    assert(bridge.remove(20, 4));
+    assert(!bridge.is_connected(23, 4));
+    assert(bridge.snapshot().power_capacity == 0);
+    assert(bridge.place(20, 4, grace::Tile::road));
+    assert(bridge.is_connected(23, 4));
+    assert(bridge.is_powered(10, 7));
     grace::World power;
     assert(power.place(11, 9, grace::Tile::residential_zone));
     assert(!power.is_powered(11, 9));
