@@ -1,6 +1,6 @@
 # Grace Valley
 
-A cozy city builder about growing a welcoming valley community. Build roads and homes, open chapels, stock a community pantry, and make room for parks. Each passing week brings new neighbors, upkeep, donations, and choices about where to grow next.
+A cozy city builder about growing a welcoming valley community. Build roads and homes, open chapels, stock a community pantry, and make room for parks. Each passing week brings new neighbors, community support, upkeep, and choices about where to grow next.
 
 **Status:** early playable prototype. The simulation and its tests are C++20; the graphical game uses SDL3. The supplied logo appears in the game and as its window icon; town art is currently drawn with simple shapes so gameplay can be tuned before producing assets.
 
@@ -29,6 +29,12 @@ Extend roads from the starting chapel. Homes and services need a connected road 
 With a chapel or pantry selected, **green** shows the reach of staffed buildings, **gold** shows new reach from a valid hovered placement, and **red markers** identify homes that still need the selected service or would lose it after the proposed placement. An **orange outline** on a connected service means it needs volunteers. The lower bar shows covered connected homes and the net change the proposed building would cause. The preview accounts for volunteer staffing; a placeable building may show no new coverage when it cannot be staffed. Service reach currently uses a five-tile Manhattan radius; road access is required, but travel along roads is not yet simulated.
 
 Each home has **belonging** and **care** needs that change weekly. Staffed chapels help belonging, staffed pantries help care, and parks help both. Volunteers grow with population; when there are too few to staff every service, `V` chooses whether pantries or chapels get first priority. Gatherings boost belonging and arrivals, while food drives boost care. Events last two weeks, reserve two volunteers, and share a six-week cooldown. Hover over a home to inspect its needs.
+
+### Funds
+
+The top bar shows **IN**, **OUT**, and **NET** for the next week at the current town size. Weekly income is a small founding grant (10) plus `1.5 × population`, rounded down. Weekly upkeep pays for homes (1 each), chapels (4), pantries (3), parks (1), roads (1 per three road tiles, rounded up), and growing resident support and coordination costs (`population / 2 + population² / 150`, rounded down by each term). Funds fall when **OUT** exceeds **IN**. Construction and events are extra one-time expenses. Building is blocked if it cannot be paid for, but removing buildings is free and can bring upkeep down. The founding grant keeps a pared-back town from being permanently trapped in debt.
+
+This is a first balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios; excessive expansion without service planning creates a deficit. Human playtesting will decide whether the pace and costs feel fair.
 
 ## Build in Visual Studio
 

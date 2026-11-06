@@ -15,14 +15,14 @@ Each milestone ends with something the player can run or evaluate. Status was la
 ## Progress evidence
 
 - **M0:** Visual Studio Debug and Release builds, core tests, and SDL startup smoke tests pass. The simulation and scenario tests also pass with GCC in Ubuntu/WSL, including AddressSanitizer and UndefinedBehaviorSanitizer. The user confirmed the game runs on this machine. Full graphical macOS/Linux builds remain a later platform gate.
-- **M1:** All five building tools, weekly growth, costs, and placement feedback are playable. Automated compact, spread, and event-led scenarios stay stable for 24 weeks; compact and spread scenarios also run 480 simulated weeks. A 20-minute headless SDL autoplay finished without a crash or error output at week 478 (80 residents, joy 86, 79 events). Funds reached 55,802, which exposes a long-run economy balance issue. Human usability and pacing feedback still remain before closing M1.
+- **M1:** All five building tools, weekly growth, costs, and placement feedback are playable. A 20-minute headless SDL autoplay finished without a crash or error output at week 478 (80 residents, joy 86, 79 events). That run exposed excessive fund growth under the old budget rule. The revised rule shows weekly income, upkeep, and net in the HUD. Compact, spread, and event-led scenarios remain viable; an overbuilt expansion now produces a deficit. Human usability and pacing feedback still remain before closing M1.
 - **M2:** The starting chapel anchors the road network; road cuts disconnect buildings and repair restores them. Pan, zoom, access warnings, and service coverage overlays work. The pond blocks construction; woods cost extra to clear. A captured frame was inspected for visual readability.
-- **M3:** Each home tracks care and belonging. Staffing consumes volunteers, priority can switch between chapels and pantries, and orange outlines identify unstaffed services. Gatherings and food drives use funds and volunteers. Three automated strategies remain viable after 24 weeks: compact (joy 100, funds 367), spread (joy 100, funds 269), and event-led (joy 84, funds 228). These figures are prototype tuning evidence, not a substitute for player feedback.
+- **M3:** Each home tracks care and belonging. Staffing consumes volunteers, priority can switch between chapels and pantries, and orange outlines identify unstaffed services. Gatherings and food drives use funds and volunteers. Three automated strategies remain viable after 24 weeks under the revised budget: compact (joy 100, funds 277), spread (joy 100, funds 155), and event-led (joy 84, funds 302). These figures are prototype tuning evidence, not a substitute for player feedback.
 
 ## Immediate next increments
 
 1. Complete the [20-minute playtest](playtest.md) and record confusing actions, pacing, and crashes; then close M1 if the exit criteria hold.
-2. Tune the economy. The automated 20-minute town accumulated 55,802 funds despite building and events; longer scenarios need more decisions and costs.
+2. Playtest the new budget. The previous rule let a 20-minute automated town accumulate 55,802 funds; the revised rule introduces road upkeep and resident support costs. Check whether the new pressure feels fair.
 3. Replace the temporary debug font HUD with a polished, scalable UI and tooltips.
 4. Move toward M4 with seasonal presentation, resident stories, and an isometric art experiment.
 

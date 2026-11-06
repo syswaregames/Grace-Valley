@@ -26,6 +26,8 @@ struct Snapshot {
     int capacity = 0;
     int happiness = 50;
     int treasury = 260;
+    int weekly_income = 0;
+    int weekly_upkeep = 0;
     int connected_homes = 0;
     int connected_roads = 0;
     int served_homes = 0;

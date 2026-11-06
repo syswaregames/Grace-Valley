@@ -221,6 +221,9 @@ std::string town_advice(const grace::World& world) {
         for (int x = 0; x < grace::World::width; ++x)
             homes += world.tile(x, y) == grace::Tile::home;
     if (state.connected_homes < homes) return "Some homes lack a road route to the starting chapel.";
+    if (state.treasury < 0) return "Funds are negative. Remove costly tiles, then let weekly support repay the debt.";
+    if (state.weekly_upkeep > state.weekly_income)
+        return "Weekly deficit: trim roads and upkeep, or grow a well-served neighborhood.";
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
             if ((world.tile(x, y) == grace::Tile::chapel ||
@@ -441,8 +444,11 @@ int main(int argc, char** argv) {
         SDL_RenderDebugTextFormat(renderer, 300, 14, "WEEK %d%s  PEOPLE %d/%d  JOY %d",
                                   state.week, paused ? " PAUSED" : "", state.population,
                                   state.capacity, state.happiness);
-        SDL_RenderDebugTextFormat(renderer, 300, 34, "FUNDS %d  TOOL %s (%d)",
-                                  state.treasury, grace::World::name(selected), grace::World::cost(selected));
+        SDL_RenderDebugTextFormat(renderer, 300, 34,
+            "FUNDS %d  IN %d  OUT %d  NET %+d  |  %s (%d)",
+            state.treasury, state.weekly_income, state.weekly_upkeep,
+            state.weekly_income - state.weekly_upkeep,
+            grace::World::name(selected), grace::World::cost(selected));
         if (logo) {
             const SDL_FRect logo_rect{static_cast<float>(window_width - 82), 3, 64, 64};
             SDL_RenderTexture(renderer, logo, nullptr, &logo_rect);

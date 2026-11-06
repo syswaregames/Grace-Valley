@@ -15,6 +15,8 @@ int main() {
     const auto start = world.snapshot();
     assert(start.week == 1);
     assert(start.capacity == 4);
+    assert(start.weekly_income == 10);
+    assert(start.weekly_upkeep == 8);
     assert(!world.place(-1, 0, grace::Tile::road));
     assert(!world.place(0, 0, grace::Tile::home));
     assert(world.placement_error(0, 0, grace::Tile::road) ==

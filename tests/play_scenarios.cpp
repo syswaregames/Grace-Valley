@@ -27,6 +27,8 @@ void report(const char* name, const grace::World& world) {
     std::cout << name << ": week=" << s.week << " population=" << s.population
               << " joy=" << s.happiness << " care=" << s.care
               << " belonging=" << s.belonging << " funds=" << s.treasury
+              << " in=" << s.weekly_income << " out=" << s.weekly_upkeep
+              << " connected=" << s.connected_homes << " served=" << s.served_homes
               << " volunteers=" << s.volunteers_used << '/' << s.volunteers_available
               << '\n';
 }
@@ -70,5 +72,37 @@ int main() {
     if (!run_weeks(compact, 456) || !run_weeks(spread, 456)) return 7;
     report("compact long run", compact);
     report("spread long run", spread);
+
+    grace::World expanding;
+    auto build_first = [&](grace::Tile type) {
+        for (int y = 0; y < grace::World::height; ++y)
+            for (int x = 0; x < grace::World::width; ++x)
+                if (expanding.can_place(x, y, type)) return expanding.place(x, y, type);
+        return false;
+    };
+    for (int tick = 0; tick < 480; ++tick) {
+        if (!run_weeks(expanding, 1)) return 8;
+        const int week = expanding.snapshot().week;
+        if (week == 2 && !build(expanding, 11, 9, grace::Tile::pantry)) return 8;
+        if (week % 6 == 0 &&
+            expanding.can_host_event(grace::EventKind::food_drive) == grace::EventError::none)
+            expanding.host_event(grace::EventKind::food_drive);
+        if (week % 4 == 0 &&
+            expanding.snapshot().capacity - expanding.snapshot().population <= 2)
+            build_first(grace::Tile::home);
+        if (week % 9 == 0) build_first(grace::Tile::road);
+    }
+    report("overbuilt long run", expanding);
+    if (expanding.snapshot().treasury >= 0 ||
+        expanding.snapshot().weekly_upkeep <= expanding.snapshot().weekly_income)
+        return 9;
+    for (int y = 0; y < grace::World::height; ++y)
+        for (int x = 0; x < grace::World::width; ++x)
+            if ((x != 12 || y != 8) && expanding.tile(x, y) != grace::Tile::meadow)
+                expanding.remove(x, y);
+    if (expanding.snapshot().weekly_upkeep >= expanding.snapshot().weekly_income ||
+        !run_weeks(expanding, 700) || expanding.snapshot().treasury <= 0)
+        return 10;
+    report("recovered after downsizing", expanding);
     return 0;
 }

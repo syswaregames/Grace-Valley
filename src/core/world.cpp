@@ -271,13 +271,20 @@ Snapshot World::evaluate() const {
     next.connected_roads = 0;
     next.served_homes = 0;
     int parks = 0;
+    int park_exposure = 0;
     int homes = 0;
+    int roads = 0;
+    int chapels = 0;
+    int pantries = 0;
     int total_belonging = 0;
     int total_care = 0;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             switch (tile(x, y)) {
-            case Tile::road: if (connected_[index(x, y)]) ++next.connected_roads; break;
+            case Tile::road:
+                ++roads;
+                if (connected_[index(x, y)]) ++next.connected_roads;
+                break;
             case Tile::home:
                 ++homes;
                 total_belonging += needs_[index(x, y)].belonging;
@@ -288,18 +295,25 @@ Snapshot World::evaluate() const {
                     if (home_has_service(x, y, Tile::chapel) &&
                         home_has_service(x, y, Tile::pantry))
                         ++next.served_homes;
-                    if (near(x, y, Tile::park, 4)) ++parks;
+                    if (near(x, y, Tile::park, 4)) ++park_exposure;
                 }
                 break;
+            case Tile::chapel: ++chapels; break;
+            case Tile::pantry: ++pantries; break;
+            case Tile::park: ++parks; break;
             default: break;
             }
         }
     }
     next.population = std::min(next.population, next.capacity);
+    next.weekly_income = 10 + next.population * 3 / 2;
+    next.weekly_upkeep = homes + chapels * 4 + pantries * 3 + parks +
+                         (roads + 2) / 3 + next.population / 2 +
+                         next.population * next.population / 150;
     next.belonging = homes == 0 ? 60 : total_belonging / homes;
     next.care = homes == 0 ? 60 : total_care / homes;
     next.happiness = std::clamp((next.belonging + next.care) / 2 +
-                                    std::min(parks * 2, 10) +
+                                    std::min(park_exposure * 2, 10) +
                                     (next.event_weeks_left > 0 ?
                                         (next.event_kind == EventKind::gathering ? 8 : 4) : 0) -
                                     (next.connected_homes < homes ? 10 : 0), 0, 100);
@@ -309,19 +323,11 @@ Snapshot World::evaluate() const {
 void World::advance_week() {
     rebuild_staffing();
     state_ = evaluate();
-    int homes = 0, chapels = 0, pantries = 0, parks = 0;
-    for (Tile type : tiles_) {
-        homes += type == Tile::home;
-        chapels += type == Tile::chapel;
-        pantries += type == Tile::pantry;
-        parks += type == Tile::park;
-    }
     const int arrival = (state_.happiness >= 55 ? 2 : 1) +
         (state_.event_weeks_left > 0 && state_.event_kind == EventKind::gathering ? 1 : 0);
     state_.population = std::min(state_.capacity, state_.population + arrival);
-    const int donations = state_.population * 2;
-    const int upkeep = homes + chapels * 4 + pantries * 3 + parks;
-    state_.treasury += donations - upkeep;
+    state_ = evaluate();
+    state_.treasury += state_.weekly_income - state_.weekly_upkeep;
     update_households();
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
