@@ -10,7 +10,7 @@ namespace grace {
 enum class Tile : std::uint8_t {
     meadow, road, home, chapel, pantry, park,
     residential_zone, commercial_zone, industrial_zone, commercial, industrial,
-    power_plant
+    power_plant, abandoned_home, abandoned_commercial, abandoned_industrial
 };
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
@@ -70,6 +70,8 @@ struct Snapshot {
     int congested_roads = 0;
     int bad_roads = 0;
     int average_road_condition = 100;
+    int abandoned_buildings = 0;
+    int low_score_weeks = 0;
     int peak_traffic = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
@@ -143,6 +145,8 @@ private:
     std::vector<HouseholdNeeds> needs_ = std::vector<HouseholdNeeds>(width * height);
     Snapshot state_{};
     int last_event_week_ = -100;
+    int low_score_weeks_ = 0;
+    int recovery_weeks_ = 0;
     bool inside(int x, int y) const;
     bool has_road(int x, int y) const;
     bool has_adjacent_road(int x, int y) const;
@@ -152,6 +156,7 @@ private:
     void rebuild_staffing();
     void update_households();
     void develop_zones(const Snapshot& demand_at_start);
+    bool transition_building_condition(bool recovering);
     bool near(int x, int y, Tile type, int radius) const;
     Snapshot evaluate() const;
 };

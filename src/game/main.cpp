@@ -481,6 +481,37 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(25, 5, 6, 10, {125, 102, 88});
         shape(10, 23, 6, 6, {239, 218, 161});
         break;
+    case grace::Tile::abandoned_home:
+        shape(7, 17, 26, 17, {105, 100, 88});
+        shape(4, 11, 32, 9, {83, 72, 66});
+        shape(8, 23, 8, 8, {48, 54, 51});
+        shape(23, 23, 8, 8, {48, 54, 51});
+        shape(8, 25, 8, 2, {125, 91, 71});
+        shape(23, 25, 8, 2, {125, 91, 71});
+        shape(17, 27, 6, 7, {69, 63, 58});
+        shape(2, 32, 7, 3, {79, 116, 66});
+        shape(30, 33, 8, 3, {79, 116, 66});
+        break;
+    case grace::Tile::abandoned_commercial:
+        shape(5, 16, 30, 19, {105, 104, 96});
+        shape(4, 9, 32, 9, {76, 85, 84});
+        shape(7, 20, 9, 10, {48, 54, 51});
+        shape(24, 20, 9, 10, {48, 54, 51});
+        shape(7, 23, 9, 2, {132, 91, 69});
+        shape(24, 23, 9, 2, {132, 91, 69});
+        shape(15, 18, 10, 3, {142, 109, 79});
+        shape(2, 34, 8, 3, {79, 116, 66});
+        break;
+    case grace::Tile::abandoned_industrial:
+        shape(5, 19, 30, 16, {109, 96, 84});
+        shape(4, 13, 32, 8, {73, 72, 69});
+        shape(25, 5, 6, 11, {89, 79, 70});
+        shape(9, 23, 8, 8, {45, 50, 48});
+        shape(23, 23, 8, 8, {45, 50, 48});
+        shape(9, 26, 8, 2, {132, 91, 69});
+        shape(23, 26, 8, 2, {132, 91, 69});
+        shape(2, 34, 9, 3, {79, 116, 66});
+        break;
     case grace::Tile::chapel:
         shape(6, 16, 28, 19, {245, 238, 211});
         shape(4, 12, 32, 6, {90, 105, 133});
@@ -569,6 +600,11 @@ std::string event_message(grace::EventError error, grace::EventKind kind,
 std::string town_advice(const grace::World& world) {
     const auto state = world.snapshot();
     if (state.bankrupt) return "BANKRUPT: the treasury fell below zero. Press Backspace to start again.";
+    if (state.abandoned_buildings > 0)
+        return std::to_string(state.abandoned_buildings) +
+            " buildings abandoned. Raise City Score above 45 for three weeks to restore them.";
+    if (state.city_score < 30)
+        return "City Score is critically low. If it stays below 30, buildings will be abandoned.";
     if (state.power_capacity == 0)
         return "No power: build a power plant (8) beside a connected road to grow zones.";
     if (state.unpowered_buildings > 0)
@@ -1515,7 +1551,8 @@ int main(int argc, char** argv) {
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
                 : "SELECT TOOLS AT RIGHT  |  DRAG ROADS AND ZONES  |  RIGHT CLICK CLEAR  |  WASD PAN  WHEEL ZOOM");
         if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
-             state.bad_roads > 0) &&
+             state.bad_roads > 0 || state.abandoned_buildings > 0 ||
+             state.city_score < 30) &&
             !state.bankrupt) {
             SDL_SetRenderDrawColor(renderer,
                 state.noise_affected_homes > 0 ? 222 : 249,
@@ -1526,6 +1563,11 @@ int main(int argc, char** argv) {
                 SDL_RenderDebugTextFormat(renderer, 804, 76,
                     "JAM %d BAD %d NOISE %d", state.congested_roads,
                     state.bad_roads, state.noise_affected_homes);
+            else if (state.abandoned_buildings > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "ABANDONED %d", state.abandoned_buildings);
+            else if (state.city_score < 30)
+                SDL_RenderDebugText(renderer, 804, 76, "CITY SCORE CRITICAL");
             else if (state.noise_affected_homes > 0 && state.bad_roads > 0)
                 SDL_RenderDebugTextFormat(renderer, 804, 76,
                     "BAD ROADS %d  NOISE %d", state.bad_roads,
@@ -1846,6 +1888,11 @@ int main(int argc, char** argv) {
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);
+            if (hovered == grace::Tile::abandoned_home ||
+                hovered == grace::Tile::abandoned_commercial ||
+                hovered == grace::Tile::abandoned_industrial)
+                hint = std::string(grace::World::name(hovered)) +
+                    ": no residents or jobs. Raise City Score above 45 for three weeks to reopen.";
             if (hovered == grace::Tile::road) {
                 const int road_level = world.road_level(hover_x, hover_y);
                 const int next_cost = world.next_road_upgrade_cost(hover_x, hover_y);

@@ -124,11 +124,13 @@ int main() {
         std::stringstream source(saved_commute.str());
         std::string magic;
         int version, week, population, treasury, care_first, bankrupt;
-        int giving, services, road_budget, tax, events, event_weeks, event_kind, last_event;
+        int giving, services, road_budget, tax, events, event_weeks, event_kind;
+        int last_event, low_score_weeks, recovery_weeks;
         int saved_width, saved_height;
         source >> magic >> version >> week >> population >> treasury >> care_first >>
             bankrupt >> giving >> services >> road_budget >> tax >> events >>
-            event_weeks >> event_kind >> last_event >> saved_width >> saved_height;
+            event_weeks >> event_kind >> last_event >> low_score_weeks >>
+            recovery_weeks >> saved_width >> saved_height;
         std::stringstream legacy;
         legacy << "GRACE_VALLEY_WORLD " << (old_map ? 2 : 1) << '\n'
                << week << ' ' << population << ' ' << treasury << ' ' << care_first
@@ -469,5 +471,24 @@ int main() {
     assert(busy_services.place(9, 7, grace::Tile::home));
     for (int week = 0; week < 3; ++week) busy_services.advance_week();
     assert(busy_services.can_host_event() == grace::EventError::none);
+    grace::World distressed;
+    assert(distressed.place(16, 8, grace::Tile::road));
+    assert(distressed.place(17, 8, grace::Tile::road));
+    for (int x : {8, 9, 11, 13, 14, 15})
+        assert(distressed.place(x, 7, grace::Tile::home));
+    distressed.set_road_budget(grace::RoadBudget::lean);
+    for (int week = 0; week < 10; ++week) distressed.advance_week();
+    assert(distressed.snapshot().city_score < 30);
+    assert(distressed.snapshot().abandoned_buildings > 0);
+    bool found_abandoned_home = false;
+    for (int y = 0; y < grace::World::height; ++y)
+        for (int x = 0; x < grace::World::width; ++x)
+            found_abandoned_home |= distressed.tile(x, y) == grace::Tile::abandoned_home;
+    assert(found_abandoned_home);
+    std::stringstream abandoned_save;
+    assert(distressed.save(abandoned_save));
+    auto restored_abandoned = grace::World::load(abandoned_save);
+    assert(restored_abandoned && restored_abandoned->snapshot().abandoned_buildings ==
+           distressed.snapshot().abandoned_buildings);
     std::cout << "world tests passed\n";
 }

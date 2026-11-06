@@ -231,7 +231,7 @@ void World::rebuild_power() {
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x) {
             const Tile type = tile(x, y);
-            if (type == Tile::home || type == Tile::commercial || type == Tile::industrial) {
+    if (type == Tile::home || type == Tile::commercial || type == Tile::industrial) {
                 const int need = power_need(type);
                 if (has_road(x, y) && available >= need) {
                     powered_[index(x, y)] = true;
@@ -424,6 +424,9 @@ const char* World::name(Tile type) {
     case Tile::commercial: return "Shop";
     case Tile::industrial: return "Workshop";
     case Tile::power_plant: return "Power plant";
+    case Tile::abandoned_home: return "Abandoned home";
+    case Tile::abandoned_commercial: return "Abandoned shop";
+    case Tile::abandoned_industrial: return "Abandoned workshop";
     default: return "Meadow";
     }
 }
@@ -461,7 +464,9 @@ PlacementError World::placement_error(int x, int y, Tile type) const {
     if (state_.bankrupt) return PlacementError::bankrupt;
     if (!inside(x, y)) return PlacementError::out_of_bounds;
     if (type == Tile::meadow || type == Tile::commercial ||
-        type == Tile::industrial || tile(x, y) != Tile::meadow)
+        type == Tile::industrial || type == Tile::abandoned_home ||
+        type == Tile::abandoned_commercial || type == Tile::abandoned_industrial ||
+        tile(x, y) != Tile::meadow)
         return PlacementError::occupied;
     if (terrain(x, y) == Terrain::water && type != Tile::road)
         return PlacementError::water;
@@ -539,6 +544,7 @@ Snapshot World::evaluate() const {
     next.commuters = 0;
     next.congested_roads = 0;
     next.bad_roads = bad_road_count();
+    next.abandoned_buildings = 0;
     next.average_road_condition = 0;
     next.peak_traffic = 0;
     next.noise_affected_homes = 0;
@@ -605,6 +611,11 @@ Snapshot World::evaluate() const {
                 if (powered_[index(x, y)]) { next.powered_demand += 3; ++next.workshops; }
                 else ++next.unpowered_buildings;
                 break;
+            case Tile::abandoned_home:
+            case Tile::abandoned_commercial:
+            case Tile::abandoned_industrial:
+                ++next.abandoned_buildings;
+                break;
             case Tile::power_plant:
                 ++plants;
                 if (powered_[index(x, y)]) next.power_capacity += plant_output;
@@ -630,7 +641,8 @@ Snapshot World::evaluate() const {
             ? road_base_upkeep * 2 : road_base_upkeep;
     next.average_road_condition = roads == 0 ? 100 : total_road_condition / roads;
     next.building_upkeep = homes +
-                           all_shops * 2 + all_workshops * 3;
+                           all_shops * 2 + all_workshops * 3 +
+                           next.abandoned_buildings;
     next.building_upkeep += plants * 6;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
@@ -661,6 +673,7 @@ Snapshot World::evaluate() const {
         std::min(next.congested_roads * 4, 28) -
         std::min(next.noise_affected_homes * 5, 25) -
         std::min(next.bad_roads * 2, 20) -
+        std::min(next.abandoned_buildings * 3, 24) -
         std::min(next.unpowered_buildings * 6, 24) -
         (next.connected_homes < homes ? 10 : 0) -
         (next.weekly_upkeep > next.weekly_income ? 6 : 0), 0, 100);
@@ -733,6 +746,58 @@ void World::advance_week() {
     state_ = evaluate();
     rebuild_traffic();
     state_ = evaluate();
+    if (state_.city_score < 30) {
+        recovery_weeks_ = 0;
+        if (++low_score_weeks_ >= 3) {
+            if (!transition_building_condition(false)) low_score_weeks_ = 0;
+            else low_score_weeks_ = 0;
+        }
+    } else if (state_.city_score >= 45) {
+        low_score_weeks_ = 0;
+        if (++recovery_weeks_ >= 3) {
+            transition_building_condition(true);
+            recovery_weeks_ = 0;
+        }
+    } else {
+        low_score_weeks_ = 0;
+        recovery_weeks_ = 0;
+    }
+    state_.low_score_weeks = low_score_weeks_;
+    if (state_.abandoned_buildings > 0 || state_.low_score_weeks > 0) {
+        rebuild_power();
+        rebuild_staffing();
+        state_ = evaluate();
+        rebuild_traffic();
+        state_ = evaluate();
+        state_.low_score_weeks = low_score_weeks_;
+    }
+}
+
+bool World::transition_building_condition(bool recovering) {
+    for (int y = height - 1; y >= 0; --y) {
+        for (int x = width - 1; x >= 0; --x) {
+            Tile& structure = tiles_[index(x, y)];
+            if (recovering) {
+                if (structure == Tile::abandoned_home)
+                    structure = Tile::home;
+                else if (structure == Tile::abandoned_commercial)
+                    structure = Tile::commercial;
+                else if (structure == Tile::abandoned_industrial)
+                    structure = Tile::industrial;
+                else continue;
+            } else {
+                if (structure == Tile::home)
+                    structure = Tile::abandoned_home;
+                else if (structure == Tile::commercial)
+                    structure = Tile::abandoned_commercial;
+                else if (structure == Tile::industrial)
+                    structure = Tile::abandoned_industrial;
+                else continue;
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 void World::set_care_priority(bool enabled) {
@@ -793,7 +858,7 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 3\n";
+    output << "GRACE_VALLEY_WORLD 4\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
@@ -802,7 +867,8 @@ bool World::save(std::ostream& output) const {
            << static_cast<int>(state_.road_budget) << ' '
            << static_cast<int>(state_.tax_policy) << ' '
            << state_.events_hosted << ' ' << state_.event_weeks_left << ' '
-           << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << '\n';
+           << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << ' '
+           << low_score_weeks_ << ' ' << recovery_weeks_ << '\n';
     output << width << ' ' << height << '\n';
     for (std::size_t i = 0; i < tiles_.size(); ++i)
         output << static_cast<int>(tiles_[i]) << ' '
@@ -817,10 +883,11 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version < 1 || version > 3))
+        (version < 1 || version > 4))
         return std::nullopt;
     World result;
     int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
+    int low_score_weeks = 0, recovery_weeks = 0;
     if (!(input >> result.state_.week >> result.state_.population >>
           result.state_.treasury >> care_first >> bankrupt >> giving >>
           services)) return std::nullopt;
@@ -828,12 +895,16 @@ std::optional<World> World::load(std::istream& input) {
     if (!(input >> tax >> result.state_.events_hosted >>
           result.state_.event_weeks_left >> event_kind >> result.last_event_week_))
         return std::nullopt;
+    if (version >= 4 && !(input >> low_score_weeks >> recovery_weeks))
+        return std::nullopt;
     if (result.state_.week < 1 || result.state_.week > 100000000 ||
         result.state_.population < 0 || result.state_.population > width * height * 4 ||
         result.state_.treasury < -1000000000 || result.state_.treasury > 1000000000 ||
         care_first < 0 || care_first > 1 || bankrupt < 0 || bankrupt > 1 ||
         giving < 0 || giving > 2 || services < 0 || services > 2 ||
         roads < 0 || roads > 2 ||
+        low_score_weeks < 0 || low_score_weeks > 2 ||
+        recovery_weeks < 0 || recovery_weeks > 2 ||
         tax < 0 || tax > 2 || result.state_.events_hosted < 0 ||
         result.state_.event_weeks_left < 0 || result.state_.event_weeks_left > 2 ||
         event_kind < 0 || event_kind > 1 ||
@@ -846,6 +917,9 @@ std::optional<World> World::load(std::istream& input) {
     result.state_.giving_policy = static_cast<GivingPolicy>(giving);
     result.state_.service_budget = static_cast<ServiceBudget>(services);
     result.state_.road_budget = static_cast<RoadBudget>(roads);
+    result.low_score_weeks_ = low_score_weeks;
+    result.recovery_weeks_ = recovery_weeks;
+    result.state_.low_score_weeks = low_score_weeks;
     result.state_.tax_policy = static_cast<TaxPolicy>(tax);
     result.state_.event_kind = static_cast<EventKind>(event_kind);
     const int saved_population = result.state_.population;
@@ -860,7 +934,7 @@ std::optional<World> World::load(std::istream& input) {
             if (!(input >> tile >> terrain >> upgraded) ||
                 (version >= 3 && !(input >> condition)) ||
                 !(input >> belonging >> care) ||
-                tile < 0 || tile > static_cast<int>(Tile::power_plant) ||
+                tile < 0 || tile > static_cast<int>(Tile::abandoned_industrial) ||
                 terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
                 upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
                 condition < 0 || condition > 100 ||
@@ -886,6 +960,7 @@ std::optional<World> World::load(std::istream& input) {
     result.state_ = result.evaluate();
     result.rebuild_traffic();
     result.state_ = result.evaluate();
+    result.state_.low_score_weeks = result.low_score_weeks_;
     if (result.state_.population != saved_population) return std::nullopt;
     return result;
 }
