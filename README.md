@@ -9,7 +9,7 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Action | Control |
 | --- | --- |
 | Select road, home, chapel, pantry, park | `1` through `5` |
-| Select a building with the mouse | Click its numbered tool in the top bar |
+| Select a building with the mouse | Click its icon in the top bar; small numbers show keyboard shortcuts |
 | Inspect chapel or pantry coverage | Select tool `3` or `4` |
 | Prioritize pantry or chapel volunteers | `V` |
 | Host a community gathering | `E` (30 funds) |

@@ -67,6 +67,52 @@ void tint(SDL_Renderer* renderer, SDL_FRect rect, Color color, Uint8 alpha) {
     SDL_RenderFillRect(renderer, &rect);
 }
 
+void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
+                    char shortcut) {
+    auto shape = [&](float dx, float dy, float w, float h, Color color) {
+        fill(renderer, {x + dx, y + dy, w, h}, color);
+    };
+    shape(0, 0, 34, 32, {116, 159, 105});
+    switch (type) {
+    case grace::Tile::road:
+        shape(0, 9, 34, 15, {188, 169, 135});
+        shape(0, 12, 34, 9, {111, 111, 105});
+        shape(5, 16, 7, 2, {231, 216, 171});
+        shape(19, 16, 7, 2, {231, 216, 171});
+        break;
+    case grace::Tile::home:
+        shape(7, 13, 20, 16, {242, 221, 177});
+        shape(4, 9, 26, 6, {154, 81, 66});
+        shape(15, 20, 6, 9, {111, 81, 66});
+        shape(22, 6, 3, 5, {111, 81, 66});
+        break;
+    case grace::Tile::chapel:
+        shape(6, 14, 22, 15, {245, 238, 211});
+        shape(4, 11, 26, 5, {90, 105, 133});
+        shape(16, 3, 3, 9, {245, 238, 211});
+        shape(12, 6, 11, 2, {245, 238, 211});
+        shape(15, 21, 5, 8, {90, 105, 133});
+        break;
+    case grace::Tile::pantry:
+        shape(6, 13, 22, 16, {217, 179, 122});
+        shape(4, 9, 26, 6, {119, 91, 75});
+        shape(11, 19, 12, 9, {88, 134, 110});
+        shape(13, 21, 8, 2, {245, 238, 211});
+        shape(13, 25, 8, 2, {245, 238, 211});
+        break;
+    case grace::Tile::park:
+        shape(15, 17, 5, 12, {112, 80, 52});
+        shape(8, 5, 19, 18, {55, 130, 79});
+        shape(11, 8, 6, 4, {84, 158, 93});
+        break;
+    default: break;
+    }
+    shape(23, 21, 11, 11, {34, 51, 55});
+    SDL_SetRenderDrawColor(renderer, 250, 238, 205, 255);
+    const char label[]{shortcut, '\0'};
+    SDL_RenderDebugText(renderer, x + 25, y + 23, label);
+}
+
 using CoverageMask = std::array<bool, grace::World::width * grace::World::height>;
 
 CoverageMask coverage_mask(const grace::World& world, grace::Tile service) {
@@ -662,17 +708,12 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(renderer, 34, 51, 55, 255);
         SDL_RenderClear(renderer);
 
-        // A small toolbar: colors correspond to the five numbered building tools.
-        constexpr std::array<Color, 5> swatches{{
-            {126, 119, 109}, {242, 221, 177}, {245, 238, 211},
-            {217, 179, 122}, {55, 130, 79}}};
+        // Building silhouettes match the map tiles; small numbers retain shortcuts.
         for (std::size_t i = 0; i < tools.size(); ++i) {
             const float x = static_cast<float>(margin + static_cast<int>(i) * 52);
             fill(renderer, {x, 17, 44, 42}, tools[i] == selected ? Color{250, 227, 151} : Color{70, 85, 86});
-            fill(renderer, {x + 5, 22, 34, 32}, swatches[i]);
-            SDL_SetRenderDrawColor(renderer, 29, 44, 42, 255);
-            const char key[] = {static_cast<char>('1' + i), '\0'};
-            SDL_RenderDebugText(renderer, x + 18, 34, key);
+            draw_tool_icon(renderer, tools[i], x + 5, 22,
+                           static_cast<char>('1' + i));
         }
         const auto state = world.snapshot();
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
