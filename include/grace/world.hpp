@@ -7,7 +7,8 @@ namespace grace {
 
 enum class Tile : std::uint8_t {
     meadow, road, home, chapel, pantry, park,
-    residential_zone, commercial_zone, industrial_zone, commercial, industrial
+    residential_zone, commercial_zone, industrial_zone, commercial, industrial,
+    power_plant
 };
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
@@ -55,6 +56,10 @@ struct Snapshot {
     int residential_demand = 0;
     int commercial_demand = 0;
     int industrial_demand = 0;
+    int power_capacity = 0;
+    int power_demand = 0;
+    int powered_demand = 0;
+    int unpowered_buildings = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
     int event_cooldown = 0;
@@ -76,6 +81,7 @@ public:
     Tile tile(int x, int y) const;
     Terrain terrain(int x, int y) const;
     bool is_connected(int x, int y) const;
+    bool is_powered(int x, int y) const;
     bool is_active_service(int x, int y) const;
     HouseholdNeeds household_needs(int x, int y) const;
     static bool within_service_range(int source_x, int source_y, int target_x, int target_y);
@@ -104,6 +110,7 @@ private:
     std::array<Tile, width * height> tiles_{};
     std::array<Terrain, width * height> terrain_{};
     std::array<bool, width * height> connected_{};
+    std::array<bool, width * height> powered_{};
     std::array<bool, width * height> staffed_{};
     std::array<HouseholdNeeds, width * height> needs_{};
     Snapshot state_{};
@@ -112,6 +119,7 @@ private:
     bool has_road(int x, int y) const;
     bool has_adjacent_road(int x, int y) const;
     void rebuild_connections();
+    void rebuild_power();
     void rebuild_staffing();
     void update_households();
     void develop_zones(const Snapshot& demand_at_start);

@@ -10,6 +10,15 @@ namespace {
 constexpr int index(int x, int y) { return y * World::width + x; }
 constexpr int anchor_x = 12;
 constexpr int anchor_y = 8;
+constexpr int plant_output = 12;
+constexpr int power_need(Tile tile) {
+    switch (tile) {
+    case Tile::home: case Tile::residential_zone: return 1;
+    case Tile::commercial: case Tile::commercial_zone: return 2;
+    case Tile::industrial: case Tile::industrial_zone: return 3;
+    default: return 0;
+    }
+}
 }
 
 World::World() {
@@ -29,6 +38,7 @@ World::World() {
     tiles_[index(10, 7)] = Tile::home;
     tiles_[index(12, 7)] = Tile::chapel;
     rebuild_connections();
+    rebuild_power();
     rebuild_staffing();
     state_ = evaluate();
 }
@@ -49,6 +59,10 @@ bool World::is_connected(int x, int y) const {
     if (!inside(x, y)) return false;
     if (tile(x, y) == Tile::road) return connected_[index(x, y)];
     return tile(x, y) != Tile::meadow && has_road(x, y);
+}
+
+bool World::is_powered(int x, int y) const {
+    return inside(x, y) && powered_[index(x, y)];
 }
 
 bool World::is_active_service(int x, int y) const {
@@ -125,6 +139,37 @@ void World::rebuild_connections() {
     }
 }
 
+void World::rebuild_power() {
+    powered_.fill(false);
+    int available = 0;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x)
+            if (tile(x, y) == Tile::power_plant && has_road(x, y)) {
+                powered_[index(x, y)] = true;
+                available += plant_output;
+            }
+    // Existing buildings take priority. Vacant zones show whether spare power
+    // can support their next building without reserving it in advance.
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x) {
+            const Tile type = tile(x, y);
+            if (type == Tile::home || type == Tile::commercial || type == Tile::industrial) {
+                const int need = power_need(type);
+                if (has_road(x, y) && available >= need) {
+                    powered_[index(x, y)] = true;
+                    available -= need;
+                }
+            }
+        }
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x) {
+            const Tile type = tile(x, y);
+            if (type == Tile::residential_zone || type == Tile::commercial_zone ||
+                type == Tile::industrial_zone)
+                powered_[index(x, y)] = has_road(x, y) && available >= power_need(type);
+        }
+}
+
 void World::rebuild_staffing() {
     staffed_.fill(false);
     state_.volunteers_available = 5 + state_.population / 4;
@@ -192,6 +237,7 @@ int World::cost(Tile type) {
     case Tile::residential_zone: return 8;
     case Tile::commercial_zone: return 12;
     case Tile::industrial_zone: return 15;
+    case Tile::power_plant: return 40;
     default: return 0;
     }
 }
@@ -212,6 +258,7 @@ const char* World::name(Tile type) {
     case Tile::industrial_zone: return "Industrial zone";
     case Tile::commercial: return "Shop";
     case Tile::industrial: return "Workshop";
+    case Tile::power_plant: return "Power plant";
     default: return "Meadow";
     }
 }
@@ -270,6 +317,7 @@ bool World::place(int x, int y, Tile type) {
     state_.treasury -= cost_at(x, y, type);
     terrain_[index(x, y)] = Terrain::grass;
     rebuild_connections();
+    rebuild_power();
     rebuild_staffing();
     state_ = evaluate();
     rebuild_staffing();
@@ -283,6 +331,7 @@ bool World::remove(int x, int y) {
     tiles_[index(x, y)] = Tile::meadow;
     needs_[index(x, y)] = HouseholdNeeds{};
     rebuild_connections();
+    rebuild_power();
     rebuild_staffing();
     state_ = evaluate();
     rebuild_staffing();
@@ -299,6 +348,10 @@ Snapshot World::evaluate() const {
     next.served_homes = 0;
     next.shops = 0;
     next.workshops = 0;
+    next.power_capacity = 0;
+    next.power_demand = 0;
+    next.powered_demand = 0;
+    next.unpowered_buildings = 0;
     int parks = 0;
     int connected_parks = 0;
     int park_exposure = 0;
@@ -308,6 +361,7 @@ Snapshot World::evaluate() const {
     int all_workshops = 0;
     int chapels = 0;
     int pantries = 0;
+    int plants = 0;
     int total_belonging = 0;
     int total_care = 0;
     for (int y = 0; y < height; ++y) {
@@ -319,9 +373,12 @@ Snapshot World::evaluate() const {
                 break;
             case Tile::home:
                 ++homes;
+                next.power_demand += 1;
+                if (powered_[index(x, y)]) ++next.powered_demand;
+                else ++next.unpowered_buildings;
                 total_belonging += needs_[index(x, y)].belonging;
                 total_care += needs_[index(x, y)].care;
-                if (has_road(x, y)) {
+                if (has_road(x, y) && powered_[index(x, y)]) {
                     ++next.connected_homes;
                     next.capacity += 4;
                     if (home_has_service(x, y, Tile::chapel) &&
@@ -338,11 +395,19 @@ Snapshot World::evaluate() const {
                 break;
             case Tile::commercial:
                 ++all_shops;
-                if (has_road(x, y)) ++next.shops;
+                next.power_demand += 2;
+                if (powered_[index(x, y)]) { next.powered_demand += 2; ++next.shops; }
+                else ++next.unpowered_buildings;
                 break;
             case Tile::industrial:
                 ++all_workshops;
-                if (has_road(x, y)) ++next.workshops;
+                next.power_demand += 3;
+                if (powered_[index(x, y)]) { next.powered_demand += 3; ++next.workshops; }
+                else ++next.unpowered_buildings;
+                break;
+            case Tile::power_plant:
+                ++plants;
+                if (powered_[index(x, y)]) next.power_capacity += plant_output;
                 break;
             default: break;
             }
@@ -361,6 +426,7 @@ Snapshot World::evaluate() const {
     next.weekly_income = next.grant_income + next.giving_income + next.tax_income;
     next.building_upkeep = homes + (roads + 2) / 3 +
                            all_shops * 2 + all_workshops * 3;
+    next.building_upkeep += plants * 6;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
         ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
@@ -397,9 +463,10 @@ void World::develop_zones(const Snapshot& demand_at_start) {
         if (demand < 25) return;
         for (int y = 0; y < height; ++y) {
             for (int x = 0; x < width; ++x) {
-                if (tile(x, y) == zone && has_road(x, y)) {
+                if (tile(x, y) == zone && powered_[index(x, y)]) {
                     tiles_[index(x, y)] = building;
                     if (building == Tile::home) needs_[index(x, y)] = HouseholdNeeds{};
+                    rebuild_power();
                     return;
                 }
             }
@@ -428,6 +495,7 @@ void World::advance_week() {
     update_households();
     state_ = evaluate();
     develop_zones(demand_at_start);
+    rebuild_power();
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
     rebuild_staffing();

@@ -29,6 +29,8 @@ void report(const char* name, const grace::World& world) {
               << " belonging=" << s.belonging << " funds=" << s.treasury
               << " in=" << s.weekly_income << " out=" << s.weekly_upkeep
               << " connected=" << s.connected_homes << " served=" << s.served_homes
+              << " power=" << s.powered_demand << '/' << s.power_capacity
+              << " need=" << s.power_demand
               << " volunteers=" << s.volunteers_used << '/' << s.volunteers_available
               << '\n';
 }
@@ -37,7 +39,8 @@ void report(const char* name, const grace::World& world) {
 
 int main() {
     grace::World compact;
-    if (!build(compact, 11, 9, grace::Tile::pantry) ||
+    if (!build(compact, 15, 7, grace::Tile::power_plant) ||
+        !build(compact, 11, 9, grace::Tile::pantry) ||
         !build(compact, 13, 9, grace::Tile::park) ||
         !build(compact, 9, 7, grace::Tile::home) ||
         !build(compact, 14, 7, grace::Tile::home) ||
@@ -47,7 +50,7 @@ int main() {
         compact.snapshot().bankrupt) return 2;
 
     grace::World spread;
-    if (!build(spread, 11, 9, grace::Tile::pantry) ||
+    if (!build(spread, 15, 7, grace::Tile::power_plant) ||
         !build(spread, 16, 8, grace::Tile::road) ||
         !build(spread, 17, 8, grace::Tile::road) ||
         !build(spread, 18, 8, grace::Tile::road) ||
@@ -60,6 +63,7 @@ int main() {
         spread.snapshot().bankrupt) return 4;
 
     grace::World event_led;
+    if (!build(event_led, 13, 9, grace::Tile::power_plant)) return 5;
     for (int week = 0; week < 24; ++week) {
         if (event_led.can_host_event(grace::EventKind::food_drive) == grace::EventError::none &&
             event_led.host_event(grace::EventKind::food_drive) != grace::EventError::none) return 5;
@@ -79,9 +83,15 @@ int main() {
     if (!run_weeks(costly_budget, 30) || !costly_budget.snapshot().bankrupt)
         return 11;
     report("costly budget", costly_budget);
+    const int final_week = costly_budget.snapshot().week;
+    costly_budget.advance_week();
+    if (costly_budget.snapshot().week != final_week ||
+        costly_budget.place(16, 8, grace::Tile::road) ||
+        costly_budget.remove(11, 8)) return 10;
 
     grace::World zoned_town;
-    if (!build(zoned_town, 9, 7, grace::Tile::residential_zone) ||
+    if (!build(zoned_town, 15, 7, grace::Tile::power_plant) ||
+        !build(zoned_town, 9, 7, grace::Tile::residential_zone) ||
         !build(zoned_town, 11, 9, grace::Tile::commercial_zone) ||
         !build(zoned_town, 13, 9, grace::Tile::industrial_zone) ||
         !build(zoned_town, 14, 9, grace::Tile::park) ||
@@ -97,6 +107,7 @@ int main() {
     if (compact.snapshot().bankrupt || spread.snapshot().bankrupt) return 7;
 
     grace::World expanding;
+    if (!build(expanding, 15, 7, grace::Tile::power_plant)) return 8;
     auto build_first = [&](grace::Tile type) {
         for (int y = 0; y < grace::World::height; ++y)
             for (int x = 0; x < grace::World::width; ++x)
@@ -113,16 +124,15 @@ int main() {
         if (week % 4 == 0 &&
             expanding.snapshot().capacity - expanding.snapshot().population <= 2)
             build_first(grace::Tile::home);
+        if (week % 12 == 0 &&
+            expanding.snapshot().power_demand + 3 >= expanding.snapshot().power_capacity)
+            build_first(grace::Tile::power_plant);
         if (week % 9 == 0) build_first(grace::Tile::road);
     }
     report("overbuilt long run", expanding);
-    if (!expanding.snapshot().bankrupt || expanding.snapshot().treasury >= 0 ||
-        expanding.snapshot().weekly_upkeep <= expanding.snapshot().weekly_income)
+    if (expanding.snapshot().bankrupt ||
+        expanding.snapshot().power_demand <= expanding.snapshot().power_capacity ||
+        expanding.snapshot().unpowered_buildings == 0)
         return 9;
-    const int final_week = expanding.snapshot().week;
-    expanding.advance_week();
-    if (expanding.snapshot().week != final_week ||
-        expanding.place(16, 8, grace::Tile::road) ||
-        expanding.remove(11, 8)) return 10;
     return 0;
 }

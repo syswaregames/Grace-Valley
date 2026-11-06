@@ -102,7 +102,8 @@ enum class ToolCategory { roads, zones, civic };
 ToolCategory category_for(grace::Tile type) {
     if (type == grace::Tile::road) return ToolCategory::roads;
     if (type == grace::Tile::chapel || type == grace::Tile::pantry ||
-        type == grace::Tile::park) return ToolCategory::civic;
+        type == grace::Tile::park || type == grace::Tile::power_plant)
+        return ToolCategory::civic;
     return ToolCategory::zones;
 }
 
@@ -115,6 +116,7 @@ const char* tool_label(grace::Tile type) {
     case grace::Tile::chapel: return "CHAPEL";
     case grace::Tile::pantry: return "PANTRY";
     case grace::Tile::park: return "PARK";
+    case grace::Tile::power_plant: return "POWER";
     default: return "TOOL";
     }
 }
@@ -172,6 +174,12 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
         shape(15, 17, 5, 12, {112, 80, 52});
         shape(8, 5, 19, 18, {55, 130, 79});
         shape(11, 8, 6, 4, {84, 158, 93});
+        break;
+    case grace::Tile::power_plant:
+        shape(5, 12, 25, 18, {90, 112, 124});
+        shape(8, 6, 5, 11, {179, 187, 177});
+        shape(20, 4, 5, 13, {179, 187, 177});
+        shape(14, 17, 7, 9, {244, 208, 93});
         break;
     default: break;
     }
@@ -356,6 +364,12 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(17, 20, 6, 16, {112, 80, 52});
         shape(9, 5, 22, 22, {55, 130, 79});
         break;
+    case grace::Tile::power_plant:
+        shape(4, 16, 32, 19, {90, 112, 124});
+        shape(8, 6, 6, 17, {176, 186, 181});
+        shape(25, 3, 6, 20, {176, 186, 181});
+        shape(17, 22, 7, 9, {245, 208, 86});
+        break;
     default: break;
     }
     const bool pending_zone = type == grace::Tile::residential_zone ||
@@ -372,6 +386,17 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         const SDL_FRect warning{px + 2 * scale, py + 2 * scale,
                                 35 * scale, 35 * scale};
         SDL_RenderRect(renderer, &warning);
+    }
+    const bool needs_power = type == grace::Tile::home ||
+        type == grace::Tile::commercial || type == grace::Tile::industrial ||
+        pending_zone;
+    if (needs_power && !world.is_powered(x, y)) {
+        // Amber lightning badge: a vacant zone cannot develop, or an existing
+        // building is offline, until a road-connected plant has spare output.
+        shape(25, 1, 14, 16, {224, 145, 48});
+        shape(32, 3, 3, 5, {255, 244, 205});
+        shape(29, 8, 6, 3, {255, 244, 205});
+        shape(29, 10, 3, 5, {255, 244, 205});
     }
 }
 
@@ -407,6 +432,10 @@ std::string event_message(grace::EventError error, grace::EventKind kind,
 std::string town_advice(const grace::World& world) {
     const auto state = world.snapshot();
     if (state.bankrupt) return "BANKRUPT: the treasury fell below zero. Press Backspace to start again.";
+    if (state.power_capacity == 0)
+        return "No power: build a power plant (8) beside a connected road to grow zones.";
+    if (state.unpowered_buildings > 0)
+        return "Power shortage: add a connected plant. Amber lightning marks unpowered tiles.";
     int homes = 0;
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
@@ -531,6 +560,7 @@ int main(int argc, char** argv) {
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
     const bool zone_smoke = argc > 1 && std::string(argv[1]) == "--zone-smoke";
     const bool toolbar_smoke = argc > 1 && std::string(argv[1]) == "--toolbar-smoke";
+    const bool power_smoke = argc > 1 && std::string(argv[1]) == "--power-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
@@ -616,16 +646,17 @@ int main(int argc, char** argv) {
     int paint_x = 0, paint_y = 0;
     std::string feedback = world.snapshot().bankrupt
         ? "BANKRUPT: review the budget or start a new town."
-        : "Setup: build your town and press Space to start weekly cashflow. B opens the budget.";
+        : "Setup: build a power plant (8) by a connected road, then press Space to start.";
     Uint64 feedback_until = SDL_GetTicks() + 6000;
     Uint64 last_week = SDL_GetTicks();
     Uint64 last_frame = last_week;
     Uint64 last_autoplay = last_week;
     const Uint64 started = last_week;
-    constexpr std::array<grace::Tile, 7> tools{
+    constexpr std::array<grace::Tile, 8> tools{
         grace::Tile::road, grace::Tile::residential_zone,
         grace::Tile::commercial_zone, grace::Tile::industrial_zone,
-        grace::Tile::chapel, grace::Tile::pantry, grace::Tile::park};
+        grace::Tile::chapel, grace::Tile::pantry, grace::Tile::park,
+        grace::Tile::power_plant};
     auto new_town = [&] {
         world = grace::World{};
         camera = Camera{};
@@ -637,7 +668,7 @@ int main(int argc, char** argv) {
         dragging = false;
         painting_tiles = false;
         last_week = SDL_GetTicks();
-        feedback = "New town ready. Press Space when your setup is complete.";
+        feedback = "New town ready. Build a power plant (8), then press Space.";
         feedback_until = SDL_GetTicks() + 4000;
     };
     auto toggle_play = [&] {
@@ -746,6 +777,18 @@ int main(int argc, char** argv) {
         click(tool_button(5));
         click(budget_button);
     }
+    if (power_smoke) {
+        SDL_Event choose{};
+        choose.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        choose.button.button = SDL_BUTTON_LEFT;
+        choose.button.x = tool_button(7).x + 40;
+        choose.button.y = tool_button(7).y + 35;
+        SDL_PushEvent(&choose);
+        SDL_Event place = choose;
+        place.button.x = margin + 13.5f * base_cell;
+        place.button.y = header + 9.5f * base_cell;
+        SDL_PushEvent(&place);
+    }
     if (drag_smoke) {
         SDL_Event down{};
         down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -828,7 +871,7 @@ int main(int argc, char** argv) {
                     camera.zoom_at(1.15f, margin + map_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key == SDLK_MINUS || event.key.key == SDLK_KP_MINUS)
                     camera.zoom_at(1.0f / 1.15f, margin + map_width / 2.0f, header + map_height / 2.0f);
-                if (event.key.key >= SDLK_1 && event.key.key <= SDLK_7) {
+                if (event.key.key >= SDLK_1 && event.key.key <= SDLK_8) {
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
                     options_open = false;
                     painting_tiles = false;
@@ -1162,19 +1205,27 @@ int main(int argc, char** argv) {
                     "IND %d", state.industrial_demand);
             } else {
                 SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "COMMUNITY");
-                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
-                    "VOLUNTEERS %d/%d", state.volunteers_used,
-                    state.volunteers_available);
-                SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
-                    "CHAPEL %d PANTRY %d", state.active_chapels,
-                    state.active_pantries);
+                if (selected == grace::Tile::power_plant) {
+                    SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
+                        "SUPPLY %d / %d", state.powered_demand, state.power_capacity);
+                    SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
+                        "NEED %d  OUT %d", state.power_demand,
+                        state.unpowered_buildings);
+                } else {
+                    SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
+                        "VOLUNTEERS %d/%d", state.volunteers_used,
+                        state.volunteers_available);
+                    SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 584,
+                        "CHAPEL %d PANTRY %d", state.active_chapels,
+                        state.active_pantries);
+                }
             }
             SDL_RenderDebugText(renderer, sidebar_x + 12, 643,
                                 "DRAG ROAD / ZONES");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 663,
                                 "CLICK CIVIC TOOLS");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 688,
-                                "1-7 SHORTCUTS");
+                                "1-8 SHORTCUTS");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 708,
                                 "OPTIONS ABOVE");
         }
@@ -1278,6 +1329,9 @@ int main(int argc, char** argv) {
             state.event_weeks_left > 0
                 ? (state.event_kind == grace::EventKind::food_drive ? "FOOD" : "GATHER")
                 : "NONE", state.event_weeks_left, state.event_cooldown);
+        SDL_RenderDebugTextFormat(renderer, 760, header + map_height + 10,
+            "POWER %d/%d  NEED %d", state.powered_demand,
+            state.power_capacity, state.power_demand);
         std::string hint = now < feedback_until ? feedback :
             (over_tile ? placement_message(world.placement_error(hover_x, hover_y, selected)) :
                          town_advice(world));
@@ -1289,7 +1343,7 @@ int main(int argc, char** argv) {
             hint = std::string(grace::World::name(selected)) + ": costs " +
                    std::to_string(world.cost_at(hover_x, hover_y, selected)) +
                    ", demand " + std::to_string(demand) +
-                   "/100. Needs a connected road and 25 demand to develop.";
+                   "/100. Needs a connected road, power, and 25 demand to develop.";
         }
         if (now >= feedback_until && over_tile && world.can_place(hover_x, hover_y, selected) &&
             world.terrain(hover_x, hover_y) == grace::Terrain::woods)
@@ -1301,6 +1355,8 @@ int main(int argc, char** argv) {
             hint = "Home needs: belonging " + std::to_string(needs.belonging) +
                    ", care " + std::to_string(needs.care) +
                    (world.is_connected(hover_x, hover_y) ? "." : ". Road disconnected!");
+            if (world.is_connected(hover_x, hover_y) &&
+                !world.is_powered(hover_x, hover_y)) hint += " No power!";
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);
@@ -1312,14 +1368,18 @@ int main(int argc, char** argv) {
                         ? state.commercial_demand : state.industrial_demand;
                 hint = std::string(grace::World::name(hovered)) +
                     (world.is_connected(hover_x, hover_y)
-                        ? demand >= 25 ? ": eligible for weekly development." :
+                        ? !world.is_powered(hover_x, hover_y) ?
+                            ": no power. Add a connected plant with spare output." :
+                          demand >= 25 ? ": eligible for weekly development." :
                             ": waiting for demand to reach 25."
                         : ": waiting for a connected road.");
             } else if (hovered == grace::Tile::commercial ||
                        hovered == grace::Tile::industrial) {
                 hint = std::string(grace::World::name(hovered)) +
                     (world.is_connected(hover_x, hover_y)
-                        ? ": provides jobs and business tax revenue."
+                        ? world.is_powered(hover_x, hover_y) ?
+                            ": provides jobs and business tax revenue." :
+                            ": no power. Add a connected plant."
                         : ": disconnected from the road network.");
             }
         }
@@ -1356,7 +1416,7 @@ int main(int argc, char** argv) {
         demand_bar(660, "IND", state.industrial_demand, {218, 174, 103});
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugTextFormat(renderer, margin, header + map_height + 99,
-            "TAX %s (T)  |  SHOPS %d  WORKSHOPS %d  JOBS %d  |  ZONES NEED ROAD ACCESS AND DEMAND TO DEVELOP",
+            "TAX %s (T)  |  SHOPS %d  WORKSHOPS %d  JOBS %d  |  ZONES NEED ROAD, POWER AND DEMAND",
             tax_name(state.tax_policy), state.shops, state.workshops, state.jobs);
         if (capture) {
             SDL_Surface* frame = SDL_RenderReadPixels(renderer, nullptr);
@@ -1393,6 +1453,13 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "Toolbar and options controls failed\n");
             exit_status = 1;
         }
+        if (power_smoke && (selected != grace::Tile::power_plant ||
+            world.tile(13, 9) != grace::Tile::power_plant ||
+            world.snapshot().power_capacity != 12 ||
+            !world.is_powered(10, 7))) {
+            std::fprintf(stderr, "Power toolbar or plant placement failed\n");
+            exit_status = 1;
+        }
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
                 if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;
@@ -1404,7 +1471,7 @@ int main(int argc, char** argv) {
             if (exit_status != 0)
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
-        if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke ||
+        if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke || power_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;

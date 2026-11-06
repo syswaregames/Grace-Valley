@@ -14,13 +14,14 @@ The fictional setting draws on the social life of church communities: gatherings
 4. See who benefited, what it cost, and what new need appeared.
 5. Revise the plan and gradually form distinct neighborhoods.
 
-The current prototype implements a deliberately small version of this loop. New towns begin in Setup, with the weekly clock stopped until the player presses Play. Players mark residential, commercial, and industrial zones; connected plots develop when their demand is high enough. Shops and workshops provide jobs, tax revenue, and new housing demand. Parks and household wellbeing also attract residential development. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time. The player sets voluntary giving, service spending, and business tax; these choices affect weekly cashflow, wellbeing, and growth. A negative treasury after a week ends the town in bankruptcy. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
+The current prototype implements a deliberately small version of this loop. New towns begin in Setup, with the weekly clock stopped until the player presses Play. Players mark residential, commercial, and industrial zones; connected plots develop when demand and spare power are high enough. Road-connected power plants supply homes and businesses; outages halt zone development and disable capacity, jobs, and taxes. Shops and workshops provide jobs, tax revenue, and new housing demand. Parks and household wellbeing also attract residential development. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time. The player sets voluntary giving, service spending, and business tax; these choices affect weekly cashflow, wellbeing, and growth. A negative treasury after a week ends the town in bankruptcy. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
 
 ## Proposed systems
 
 | System | Player decision | Interesting consequence |
 | --- | --- | --- |
 | Roads and paths | Connect and shape neighborhoods | Access competes with green space and money |
+| Power plants | Place enough connected supply for homes and businesses | Outages stop growth; extra capacity adds upkeep |
 | Residential zones | Welcome new households | Jobs, parks, and wellbeing drive demand for homes |
 | Commercial zones | Make room for shops | Jobs and tax revenue grow with the resident base |
 | Industrial zones | Make room for workshops | More jobs and tax revenue, with a care and happiness tradeoff |

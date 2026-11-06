@@ -14,12 +14,35 @@ int main() {
     assert(world.cost_at(17, 10, grace::Tile::road) == grace::World::cost(grace::Tile::road) + 10);
     const auto start = world.snapshot();
     assert(start.week == 1);
-    assert(start.capacity == 4);
+    assert(start.capacity == 0);
+    assert(start.power_capacity == 0);
+    assert(start.power_demand == 1);
+    assert(!world.is_powered(10, 7));
     assert(start.weekly_income == 10);
     assert(start.weekly_upkeep == 8);
     assert(start.weekly_income == start.grant_income + start.giving_income);
     assert(start.weekly_upkeep == start.building_upkeep + start.service_upkeep +
                                   start.community_upkeep);
+    grace::World power;
+    assert(power.place(11, 9, grace::Tile::residential_zone));
+    assert(!power.is_powered(11, 9));
+    power.advance_week();
+    assert(power.tile(11, 9) == grace::Tile::residential_zone);
+    assert(power.place(13, 9, grace::Tile::power_plant));
+    assert(power.snapshot().power_capacity == 12);
+    assert(power.is_powered(11, 9));
+    power.advance_week();
+    assert(power.tile(11, 9) == grace::Tile::home);
+    assert(power.is_powered(11, 9));
+    assert(power.snapshot().power_demand == 2);
+    assert(power.remove(13, 8));
+    assert(power.snapshot().power_capacity == 0);
+    assert(!power.is_powered(11, 9));
+    assert(power.snapshot().unpowered_buildings == 2);
+    assert(power.snapshot().capacity == 0);
+    assert(power.place(13, 8, grace::Tile::road));
+    assert(power.snapshot().power_capacity == 12);
+    assert(power.is_powered(11, 9));
     grace::World forecast;
     const auto first_week = forecast.snapshot();
     forecast.advance_week();
@@ -39,6 +62,8 @@ int main() {
            lean_budget.household_needs(10, 7).care);
     grace::World gentle_giving;
     grace::World ambitious_giving;
+    assert(gentle_giving.place(13, 9, grace::Tile::power_plant));
+    assert(ambitious_giving.place(13, 9, grace::Tile::power_plant));
     gentle_giving.set_giving_policy(grace::GivingPolicy::gentle);
     ambitious_giving.set_giving_policy(grace::GivingPolicy::ambitious);
     gentle_giving.advance_week();
@@ -48,6 +73,7 @@ int main() {
     assert(ambitious_giving.household_needs(10, 7).belonging <
            gentle_giving.household_needs(10, 7).belonging);
     grace::World zoned;
+    assert(zoned.place(15, 7, grace::Tile::power_plant));
     assert(zoned.place(0, 0, grace::Tile::residential_zone));
     assert(!zoned.place(20, 4, grace::Tile::commercial_zone));
     assert(zoned.place(11, 9, grace::Tile::residential_zone));
@@ -56,6 +82,7 @@ int main() {
     assert(zoned.tile(11, 9) == grace::Tile::home);
     assert(zoned.snapshot().capacity == 8);
     grace::World business;
+    assert(business.place(14, 9, grace::Tile::power_plant));
     assert(business.place(11, 9, grace::Tile::commercial_zone));
     assert(business.place(13, 9, grace::Tile::industrial_zone));
     assert(business.snapshot().commercial_demand < 25);
@@ -89,6 +116,7 @@ int main() {
     assert(business.snapshot().shops == 0);
     assert(business.snapshot().jobs == 6);
     grace::World vacant;
+    assert(vacant.place(13, 9, grace::Tile::power_plant));
     assert(vacant.place(11, 9, grace::Tile::commercial_zone));
     vacant.set_tax_policy(grace::TaxPolicy::high);
     for (int week = 0; week < 6; ++week) vacant.advance_week();
@@ -104,8 +132,10 @@ int main() {
            grace::PlacementError::needs_connection);
     assert(!world.remove(12, 8)); // The starting chapel's road anchors the network.
     assert(world.place(9, 7, grace::Tile::home));
-    assert(world.snapshot().capacity == 8);
+    assert(world.snapshot().capacity == 0);
     assert(world.snapshot().treasury == start.treasury - 30);
+    assert(world.place(13, 9, grace::Tile::power_plant));
+    assert(world.snapshot().capacity == 8);
     assert(world.home_has_service(10, 7, grace::Tile::chapel));
     assert(!world.home_has_service(10, 7, grace::Tile::pantry));
     assert(world.would_serve_home(grace::Tile::pantry, 15, 7, 10, 7));
@@ -180,6 +210,7 @@ int main() {
 
     grace::World events;
     assert(events.can_host_event() == grace::EventError::no_people);
+    assert(events.place(13, 9, grace::Tile::power_plant));
     events.advance_week();
     assert(events.can_host_event() == grace::EventError::none);
     const int before_event = events.snapshot().treasury;
@@ -195,6 +226,8 @@ int main() {
     assert(events.snapshot().event_weeks_left == 0);
     grace::World food_drives;
     grace::World no_events;
+    assert(food_drives.place(13, 9, grace::Tile::power_plant));
+    assert(no_events.place(13, 9, grace::Tile::power_plant));
     for (int week = 0; week < 24; ++week) {
         if (food_drives.can_host_event(grace::EventKind::food_drive) ==
             grace::EventError::none)
@@ -208,6 +241,7 @@ int main() {
     assert(food_drives.snapshot().care >= 50);
     grace::World busy_services;
     assert(busy_services.place(11, 9, grace::Tile::pantry));
+    assert(busy_services.place(13, 9, grace::Tile::power_plant));
     busy_services.advance_week();
     assert(busy_services.can_host_event() == grace::EventError::insufficient_volunteers);
     assert(busy_services.place(9, 7, grace::Tile::home));

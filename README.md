@@ -1,6 +1,6 @@
 # Grace Valley
 
-A cozy city builder about growing a welcoming valley community. Build roads and homes, open chapels, stock a community pantry, and make room for parks. Each passing week brings new neighbors, community support, upkeep, and choices about where to grow next.
+A cozy city builder about growing a welcoming valley community. Build roads, power, and neighborhoods; open chapels, stock a community pantry, and make room for parks. Each passing week brings new neighbors, community support, upkeep, and choices about where to grow next.
 
 **Status:** early playable prototype. The simulation and its tests are C++20; the graphical game uses SDL3. The supplied logo appears in the game and as its window icon; town art is currently drawn with simple shapes so gameplay can be tuned before producing assets.
 
@@ -8,8 +8,8 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 
 | Action | Control |
 | --- | --- |
-| Select road, residential, commercial, industrial, chapel, pantry, park | `1` through `7` |
-| Select a tool with the mouse | Click any of the seven icons in the two-column right toolbar; small numbers show keyboard shortcuts |
+| Select road, residential, commercial, industrial, chapel, pantry, park, power plant | `1` through `8` |
+| Select a tool with the mouse | Click any of the eight icons in the two-column right toolbar; small numbers show keyboard shortcuts |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Inspect chapel or pantry coverage | Select tool `5` or `6` |
 | Prioritize pantry or chapel volunteers | `V` |
@@ -32,16 +32,18 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Reset the camera | `R` |
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
-New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and civic construction still cost funds during setup. Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all seven build tools visible and shows information about the selected tool. The lower bar shows demand, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
+New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all eight build tools visible and shows information about the selected tool. The lower bar shows demand, power, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.
 
 ### Zoning and demand
 
-Mark residential, commercial, and industrial plots during Setup or while the simulation runs. Zoning has an upfront cost, but it leaves a visibly vacant R/C/I lot. At the start of each week, the game uses the demand shown in the bars: a lot can develop into a home, shop, or workshop only when it touches the connected road network and its demand is at least 25. At most one lot of each kind develops per week. If demand or road access is missing, the lot stays empty. Right click clears a vacant zone or its finished building.
+Mark residential, commercial, and industrial plots during Setup or while the simulation runs. Zoning has an upfront cost, but it leaves a visibly vacant R/C/I lot. At the start of each week, the game uses the demand shown in the bars: a lot can develop into a home, shop, or workshop only when it touches the connected road network, has spare power, and its demand is at least 25. At most one lot of each kind develops per week. If demand, road access, or power is missing, the lot stays empty. Right click clears a vacant zone or its finished building.
 
-The three bars below the map show **RES**, **COM**, and **IND** demand from 0 to 100. Shops provide four jobs and workshops provide six, increasing residential demand. Connected parks and household happiness also attract residents. More residents raise business demand. Workshops can lower nearby care and town happiness. Developed businesses pay tax and incur upkeep; disconnecting them stops their jobs and tax revenue while their upkeep remains.
+Build a **power plant** beside a connected road with tool `8`. Each plant costs 40 funds, adds 12 units of supply, and costs 6 funds per week in upkeep. Homes use 1 unit, shops 2, and workshops 3. Connected roads distribute power; no separate wire tool is needed yet. Existing buildings receive power before vacant zones. The lower bar shows powered load, total supply, and current building demand. **Amber lightning badges** mark zones that cannot develop and occupied buildings that have lost power. Unpowered homes provide no capacity, while unpowered shops and workshops provide no jobs or taxes. Removing the plant or its road link cuts supply immediately.
+
+The three bars below the map show **RES**, **COM**, and **IND** demand from 0 to 100. Powered shops provide four jobs and powered workshops provide six, increasing residential demand. Connected parks and household happiness also attract residents. More residents raise business demand. Workshops can lower nearby care and town happiness. Developed businesses pay tax and incur upkeep; disconnecting them or losing power stops their jobs and tax revenue while their upkeep remains.
 
 With a chapel or pantry selected, **green** shows the reach of staffed buildings, **gold** shows new reach from a valid hovered placement, and **red markers** identify homes that still need the selected service or would lose it after the proposed placement. An **orange outline** on a connected service means it needs volunteers. The lower bar shows covered connected homes and the net change the proposed building would cause. The preview accounts for volunteer staffing; a placeable building may show no new coverage when it cannot be staffed. Service reach currently uses a five-tile Manhattan radius; road access is required, but travel along roads is not yet simulated.
 
@@ -51,7 +53,7 @@ Each home has **belonging** and **care** needs that change weekly. Staffed chape
 
 The top bar shows **IN**, **OUT**, and **NET** for the next week at the current town size. Press `B` for the budget breakdown and clickable policies. The founding grant is 10 per week. **Giving** can be Gentle (1 per resident), Balanced (1.5 per resident, rounded down), or Ambitious (2 per resident). Gentle giving slightly helps household wellbeing; Ambitious giving strains it. **Services** can be Lean (half service upkeep, rounded up), Balanced, or Generous (double service upkeep). Funding changes how strongly staffed chapels and pantries meet needs. **Business tax** can be Low, Balanced, or High. Low tax encourages new shops and workshops but collects less from each; High tax collects more from existing businesses but suppresses new business demand. Homes, roads, shops, and workshops have fixed upkeep; resident support and coordination costs grow with population. Construction and events are separate one-time expenses. If weekly cashflow takes the treasury below zero, the town is **bankrupt** and the simulation ends. The bankruptcy screen shows the final balance and weekly cashflow. Click **View Budget** to inspect expenses or **New Town** to restart; `B` and `Backspace` are shortcuts.
 
-This is an early balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios; an overbuilt town reaches bankruptcy. Human playtesting will decide whether the choices and pace feel fair.
+This is an early balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios. A costly service budget can cause bankruptcy; an expanding town can also run short of power. Human playtesting will decide whether the choices and pace feel fair.
 
 ## Build in Visual Studio
 
