@@ -44,9 +44,27 @@ int main() {
     assert(commute.snapshot().commuters >= 8);
     assert(commute.traffic_at(12, 8) > commute.road_capacity(12, 8));
     assert(commute.snapshot().congested_roads > 0);
+    grace::World quality_town = commute;
+    assert(quality_town.remove(15, 9));
+    const auto congested = quality_town.snapshot();
+    assert(congested.congested_roads > 0);
+    for (int y = 0; y < grace::World::height; ++y)
+        for (int x = 0; x < grace::World::width; ++x)
+            if (quality_town.traffic_at(x, y) > quality_town.road_capacity(x, y))
+                assert(quality_town.upgrade_road(x, y));
+    const auto relieved = quality_town.snapshot();
+    assert(relieved.congested_roads == 0);
+    assert(relieved.city_score > congested.city_score);
+    assert(relieved.residential_demand > congested.residential_demand);
+    assert(relieved.commercial_demand > congested.commercial_demand);
+    assert(relieved.industrial_demand > congested.industrial_demand);
     const int jams_before_upgrade = commute.snapshot().congested_roads;
     const int funds_before_upgrade = commute.snapshot().treasury;
     const int upkeep_before_upgrade = commute.snapshot().weekly_upkeep;
+    const int score_before_upgrade = commute.snapshot().city_score;
+    const int homes_demand_before_upgrade = commute.snapshot().residential_demand;
+    const int shops_demand_before_upgrade = commute.snapshot().commercial_demand;
+    const int industry_demand_before_upgrade = commute.snapshot().industrial_demand;
     assert(commute.upgrade_road(12, 8));
     assert(commute.road_level(12, 8) == 1);
     assert(commute.road_capacity(12, 8) == 14);
@@ -54,6 +72,10 @@ int main() {
     assert(commute.snapshot().treasury == funds_before_upgrade - 20);
     assert(commute.snapshot().weekly_upkeep == upkeep_before_upgrade + 1);
     assert(commute.snapshot().congested_roads == jams_before_upgrade - 1);
+    assert(commute.snapshot().city_score > score_before_upgrade);
+    assert(commute.snapshot().residential_demand > homes_demand_before_upgrade);
+    assert(commute.snapshot().commercial_demand >= shops_demand_before_upgrade);
+    assert(commute.snapshot().industrial_demand >= industry_demand_before_upgrade);
     std::stringstream saved_commute;
     assert(commute.save(saved_commute));
     auto restored_commute = grace::World::load(saved_commute);
@@ -61,6 +83,7 @@ int main() {
     assert(restored_commute->snapshot().week == commute.snapshot().week);
     assert(restored_commute->snapshot().treasury == commute.snapshot().treasury);
     assert(restored_commute->snapshot().congested_roads == commute.snapshot().congested_roads);
+    assert(restored_commute->snapshot().city_score == commute.snapshot().city_score);
     assert(restored_commute->traffic_at(12, 8) == commute.traffic_at(12, 8));
     assert(restored_commute->is_upgraded_road(12, 8));
     std::string legacy_text = saved_commute.str();

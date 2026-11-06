@@ -598,15 +598,27 @@ Snapshot World::evaluate() const {
                                     std::min(next.workshops * 2, 12), 0, 100);
     next.jobs = next.shops * 4 + next.workshops * 6;
     next.commuters = std::min(next.population, next.jobs);
+    // City Score captures longer-term desirability. Congestion also affects
+    // immediate happiness above, so a bottleneck has a visible growth cost.
+    next.city_score = std::clamp(45 + next.happiness / 2 +
+        std::min(connected_parks * 3, 12) +
+        std::min(next.served_homes * 2, 10) -
+        std::min(next.congested_roads * 4, 28) -
+        std::min(next.unpowered_buildings * 6, 24) -
+        (next.connected_homes < homes ? 10 : 0) -
+        (next.weekly_upkeep > next.weekly_income ? 6 : 0), 0, 100);
+    const int quality_effect = next.city_score - 60;
     const int tax_growth = next.tax_policy == TaxPolicy::low ? 12 :
                            next.tax_policy == TaxPolicy::high ? -18 : 0;
     next.residential_demand = std::clamp(45 + next.jobs * 5 +
         connected_parks * 8 + next.happiness / 5 - next.population * 3 -
-        (next.capacity - next.population) * 4, 0, 100);
+        (next.capacity - next.population) * 4 + quality_effect / 2, 0, 100);
     next.commercial_demand = std::clamp(20 + next.population * 4 -
-        next.shops * 30 - next.workshops * 3 + tax_growth, 0, 100);
+        next.shops * 30 - next.workshops * 3 + tax_growth +
+        quality_effect / 3, 0, 100);
     next.industrial_demand = std::clamp(15 + next.population * 3 +
-        next.shops * 5 - next.workshops * 35 + tax_growth, 0, 100);
+        next.shops * 5 - next.workshops * 35 + tax_growth +
+        quality_effect / 4, 0, 100);
     return next;
 }
 

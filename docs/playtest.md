@@ -9,7 +9,7 @@ This is the remaining human check for M1. It measures clarity and pacing as well
 3. Cycle business tax with `T`. Check whether the revenue and business demand tradeoff is clear.
 4. Place a pantry and inspect its gold coverage preview before clicking.
 5. Remove a road that serves homes or businesses, observe the access warnings and lost business activity, then reconnect it. Disconnect the plant and check that the amber outage badges appear and zones stop growing; restore power.
-6. Zone jobs across the main road from several homes. Watch for the traffic alert and amber road tiles. Upgrade a hotspot with `U`, then try Avenue, Boulevard, and Arterial levels. Check whether the hotspot count drops and the weekly budget changes.
+6. Zone jobs across the main road from several homes. Watch for the traffic alert, amber road tiles, City Score, and demand bars. Upgrade a hotspot with `U`, then try Avenue, Boulevard, and Arterial levels. Check whether congestion falls, the score and demand recover, and the weekly budget changes.
 7. Expand toward the pond and woods. Note whether their rules are clear before placing.
 8. Build enough services to run short of volunteers. Press `V` and watch coverage change.
 9. Host a gathering with `E` and a food drive with `F` when available. Try the camera controls and continue playing until the timer ends.

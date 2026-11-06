@@ -1357,6 +1357,13 @@ int main(int argc, char** argv) {
             "FUNDS %d  IN %d  OUT %d  NET %+d",
             state.treasury, state.weekly_income, state.weekly_upkeep,
             state.weekly_income - state.weekly_upkeep);
+        SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+        SDL_RenderDebugTextFormat(renderer, 350, 14,
+            "CITY SCORE %d / 100", state.city_score);
+        fill(renderer, {350, 38, 220, 10}, {66, 82, 83});
+        const Color score_color = state.city_score >= 70 ? Color{102, 188, 121} :
+            state.city_score >= 45 ? Color{232, 181, 86} : Color{215, 92, 76};
+        fill(renderer, {350, 38, 2.2f * state.city_score, 10}, score_color);
         draw_button(renderer, play_button, paused ? "PLAY" : "PAUSE", !paused);
         draw_button(renderer, budget_button, "BUDGET", budget_open);
         draw_button(renderer, options_button, "OPTIONS", options_open);
@@ -1510,7 +1517,7 @@ int main(int argc, char** argv) {
                 }
             }
             SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 603,
-                "JAMS %d  PEAK %d", state.congested_roads, state.peak_traffic);
+                "CITY %d  JAMS %d", state.city_score, state.congested_roads);
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
@@ -1702,6 +1709,8 @@ int main(int argc, char** argv) {
                         ": costs " + std::to_string(grace::World::cost(tools[index])) +
                         " funds. Click to select.";
         }
+        if (now >= feedback_until && contains({350, 10, 220, 48}, mx, my))
+            hint = "City Score reflects joy, parks, services, road access, power, traffic, and cashflow.";
         SDL_RenderDebugText(renderer, margin, header + map_height + 51, hint.c_str());
         auto demand_bar = [&](int x, const char* label, int demand, Color color) {
             const float y = static_cast<float>(header + map_height + 79);

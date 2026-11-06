@@ -34,6 +34,7 @@ struct Snapshot {
     int population = 0;
     int capacity = 0;
     int happiness = 50;
+    int city_score = 50;
     int treasury = 260;
     int weekly_income = 0;
     int weekly_upkeep = 0;

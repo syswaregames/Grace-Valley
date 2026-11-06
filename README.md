@@ -50,6 +50,8 @@ Start a road stroke on a placeable tile or any existing road. Dragging builds ea
 
 Residents commute from powered homes to powered shops and workshops along connected roads. Small cars show the resulting flow. Each ordinary road tile handles 6 trips; overloaded tiles turn **amber**, then **red** at more than twice their capacity. The top bar reports traffic alerts, the sidebar shows the number of hotspots and peak flow, and hovering a road shows its traffic and capacity. Each congested tile lowers town happiness by 2, up to a 12-point penalty.
 
+The top bar also shows a **City Score** from 0 to 100. Joy, connected parks, and homes served by both a chapel and pantry improve it; congestion, power outages, lost road access, and a weekly deficit lower it. Each congested road removes another 4 score points, up to 28, in addition to its effect on joy. The score changes all three zoning demands: residential responds most, commercial next, and industrial less. A score above 60 helps growth; a score below 60 holds it back. Hover over the meter for a reminder of its factors. Fixing a busy corridor can raise the score and demand without placing new zones.
+
 Click **Upgrade Road** in the sidebar or press `U`, then click a road tile to advance it one level. `Shift` + left click upgrades directly. Each level has a distinct surface and badge:
 
 | Road level | Trip capacity | Cost to build or upgrade | Added weekly upkeep per tile |
