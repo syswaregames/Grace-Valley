@@ -35,6 +35,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Zoom at the pointer; survey the whole valley | Mouse wheel |
 | Zoom from the center | `+` and `-` |
 | Reset the camera | `R` |
+| Inspect a map item | Hover without moving for about 1.2 seconds |
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
 New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. Buildings cannot occupy the pond, but roads can cross it as bridges; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all eight build tools visible and shows information about the selected tool. The lower bar shows demand, power, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.

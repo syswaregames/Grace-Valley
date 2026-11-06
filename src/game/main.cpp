@@ -986,6 +986,10 @@ int main(int argc, char** argv) {
     Uint64 car_animation_ms = 0;
     Uint64 last_autoplay = last_week;
     const Uint64 started = last_week;
+    bool hover_tracking = false;
+    int hover_track_x = -1, hover_track_y = -1;
+    float hover_anchor_x = 0, hover_anchor_y = 0;
+    Uint64 hover_started = 0;
     constexpr std::array<grace::Tile, 8> tools{
         grace::Tile::road, grace::Tile::residential_zone,
         grace::Tile::commercial_zone, grace::Tile::industrial_zone,
@@ -1706,6 +1710,20 @@ int main(int argc, char** argv) {
         }
         int hover_x = -1, hover_y = -1;
         const bool over_tile = camera.tile_at(mx, my, hover_x, hover_y);
+        const bool tooltip_area = over_tile && !budget_open && !options_open &&
+                                  !state.bankrupt && !dragging && !painting_tiles;
+        if (!tooltip_area) {
+            hover_tracking = false;
+        } else if (!hover_tracking || hover_x != hover_track_x ||
+                   hover_y != hover_track_y || std::abs(mx - hover_anchor_x) > 4.0f ||
+                   std::abs(my - hover_anchor_y) > 4.0f) {
+            hover_tracking = true;
+            hover_track_x = hover_x;
+            hover_track_y = hover_y;
+            hover_anchor_x = mx;
+            hover_anchor_y = my;
+            hover_started = now;
+        }
         const bool stroke_start = over_tile && !upgrade_mode &&
             (selected == grace::Tile::road || is_zone(selected)) &&
             world.tile(hover_x, hover_y) == selected;
@@ -1752,7 +1770,7 @@ int main(int argc, char** argv) {
                 SDL_RenderRect(renderer, &rect);
         }
         SDL_SetRenderClipRect(renderer, nullptr);
-        if (over_tile && !budget_open && !options_open && !state.bankrupt) {
+        if (tooltip_area && now - hover_started >= 1200) {
             const MapTooltip tip = map_tooltip(world, hover_x, hover_y);
             std::size_t longest = tip.title.size();
             for (int line = 0; line < tip.detail_count; ++line)
