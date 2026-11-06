@@ -14,7 +14,7 @@ The fictional setting draws on the social life of church communities: gatherings
 4. See who benefited, what it cost, and what new need appeared.
 5. Revise the plan and gradually form distinct neighborhoods.
 
-The current prototype implements a deliberately small version of this loop. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time, while community support and upkeep change the treasury. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
+The current prototype implements a deliberately small version of this loop. New towns begin in Setup, with the weekly clock stopped until the player presses Play. Homes need a road connected to the starting chapel; staffed chapels and pantries within five tiles serve them. Selecting either service shows its current and proposed coverage. Home care and belonging change each week. Parks improve both; gatherings focus on belonging and food drives on care. People move into available homes over time. The player sets a voluntary giving policy and service spending; both affect weekly cashflow and household wellbeing. A negative treasury after a week ends the town in bankruptcy. Breaking a road route disconnects homes and services until it is repaired. Woods cost extra to clear and the pond shapes expansion.
 
 ## Proposed systems
 

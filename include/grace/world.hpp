@@ -8,12 +8,14 @@ namespace grace {
 enum class Tile : std::uint8_t { meadow, road, home, chapel, pantry, park };
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
-    none, out_of_bounds, occupied, water, insufficient_funds, needs_road, needs_connection
+    none, out_of_bounds, occupied, water, insufficient_funds, needs_road, needs_connection, bankrupt
 };
 enum class EventError : std::uint8_t {
-    none, no_people, cooldown, insufficient_funds, insufficient_volunteers
+    none, no_people, cooldown, insufficient_funds, insufficient_volunteers, bankrupt
 };
 enum class EventKind : std::uint8_t { gathering, food_drive };
+enum class GivingPolicy : std::uint8_t { gentle, balanced, ambitious };
+enum class ServiceBudget : std::uint8_t { lean, balanced, generous };
 
 struct HouseholdNeeds {
     int belonging = 60;
@@ -28,6 +30,11 @@ struct Snapshot {
     int treasury = 260;
     int weekly_income = 0;
     int weekly_upkeep = 0;
+    int grant_income = 0;
+    int giving_income = 0;
+    int building_upkeep = 0;
+    int service_upkeep = 0;
+    int community_upkeep = 0;
     int connected_homes = 0;
     int connected_roads = 0;
     int served_homes = 0;
@@ -42,6 +49,9 @@ struct Snapshot {
     int event_cooldown = 0;
     EventKind event_kind = EventKind::gathering;
     bool care_first = false;
+    bool bankrupt = false;
+    GivingPolicy giving_policy = GivingPolicy::balanced;
+    ServiceBudget service_budget = ServiceBudget::balanced;
 };
 
 class World {
@@ -67,6 +77,8 @@ public:
     bool place(int x, int y, Tile type);
     bool remove(int x, int y);
     void set_care_priority(bool enabled);
+    void set_giving_policy(GivingPolicy policy);
+    void set_service_budget(ServiceBudget budget);
     EventError can_host_event(EventKind kind = EventKind::gathering) const;
     EventError host_event(EventKind kind = EventKind::gathering);
     void advance_week();

@@ -237,7 +237,8 @@ const char* placement_message(grace::PlacementError error) {
     case grace::PlacementError::water: return "Water blocks construction. Build around the pond.";
     case grace::PlacementError::insufficient_funds: return "Not enough funds for that building.";
     case grace::PlacementError::needs_road: return "Build beside a connected road.";
-    case grace::PlacementError::needs_connection: return "Extend the road from the starting chapel.";
+    case grace::PlacementError::needs_connection: return "Build beside any existing road.";
+    case grace::PlacementError::bankrupt: return "The town is bankrupt. Press Backspace to start again.";
     default: return "Ready to build.";
     }
 }
@@ -251,6 +252,7 @@ std::string event_message(grace::EventError error, grace::EventKind kind,
     case grace::EventError::insufficient_funds: return kind == grace::EventKind::food_drive
         ? "A food drive costs 25 funds." : "A gathering costs 30 funds.";
     case grace::EventError::insufficient_volunteers: return "An event needs two free volunteers.";
+    case grace::EventError::bankrupt: return "The town is bankrupt. Press Backspace to start again.";
     default: return kind == grace::EventKind::food_drive
         ? "Food drive started: extra care for two weeks."
         : "Gathering started: extra belonging for two weeks.";
@@ -259,14 +261,14 @@ std::string event_message(grace::EventError error, grace::EventKind kind,
 
 std::string town_advice(const grace::World& world) {
     const auto state = world.snapshot();
+    if (state.bankrupt) return "BANKRUPT: the treasury fell below zero. Press Backspace to start again.";
     int homes = 0;
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
             homes += world.tile(x, y) == grace::Tile::home;
     if (state.connected_homes < homes) return "Some homes lack a road route to the starting chapel.";
-    if (state.treasury < 0) return "Funds are negative. Remove costly tiles, then let weekly support repay the debt.";
     if (state.weekly_upkeep > state.weekly_income)
-        return "Weekly deficit: trim roads and upkeep, or grow a well-served neighborhood.";
+        return "Weekly deficit: press B for budget; adjust giving and services before funds run out.";
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
             if ((world.tile(x, y) == grace::Tile::chapel ||
@@ -281,11 +283,29 @@ std::string town_advice(const grace::World& world) {
     return "Grow connected homes, then check chapel and pantry coverage with tools 3 and 4.";
 }
 
-void title(SDL_Window* window, const grace::Snapshot& s, grace::Tile selected, bool paused) {
+const char* giving_name(grace::GivingPolicy policy) {
+    switch (policy) {
+    case grace::GivingPolicy::gentle: return "GENTLE";
+    case grace::GivingPolicy::ambitious: return "AMBITIOUS";
+    default: return "BALANCED";
+    }
+}
+
+const char* service_name(grace::ServiceBudget budget) {
+    switch (budget) {
+    case grace::ServiceBudget::lean: return "LEAN";
+    case grace::ServiceBudget::generous: return "GENEROUS";
+    default: return "BALANCED";
+    }
+}
+
+void title(SDL_Window* window, const grace::Snapshot& s, grace::Tile selected,
+           bool paused, bool started) {
     char buffer[256];
     std::snprintf(buffer, sizeof(buffer),
-                  "Grace Valley | Week %d%s | People %d/%d | Joy %d | Funds %d | %s (%d) | 1-5 build, right click remove, Space pause, N step",
-                  s.week, paused ? " [paused]" : "", s.population, s.capacity,
+                  "Grace Valley | Week %d%s | People %d/%d | Joy %d | Funds %d | %s (%d) | Space play/pause, B budget",
+                  s.week, s.bankrupt ? " [BANKRUPT]" : !started ? " [SETUP]" :
+                  paused ? " [paused]" : "", s.population, s.capacity,
                   s.happiness, s.treasury, grace::World::name(selected), grace::World::cost(selected));
     SDL_SetWindowTitle(window, buffer);
 }
@@ -348,8 +368,9 @@ int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
+    const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture = argc > 2 &&
-        (std::string(argv[1]) == "--capture" || capture_roads);
+        (std::string(argv[1]) == "--capture" || capture_roads || capture_budget);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
     int exit_status = 0;
@@ -386,14 +407,16 @@ int main(int argc, char** argv) {
         world.place(13, 9, grace::Tile::road);
     }
     Camera camera;
-    grace::Tile selected = capture && !capture_roads
+    grace::Tile selected = capture && !capture_roads && !capture_budget
         ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
-    bool paused = false;
+    bool paused = soak_seconds == 0;
+    bool simulation_started = soak_seconds > 0;
+    bool budget_open = capture_budget;
     bool dragging = false;
     bool painting_roads = false;
     int paint_x = 0, paint_y = 0;
-    std::string feedback = "Welcome! Extend roads from the chapel, then build beside them.";
+    std::string feedback = "Setup: build your town and press Space to start weekly cashflow. B opens the budget.";
     Uint64 feedback_until = SDL_GetTicks() + 6000;
     Uint64 last_week = SDL_GetTicks();
     Uint64 last_frame = last_week;
@@ -456,8 +479,41 @@ int main(int argc, char** argv) {
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
                 if (event.key.key == SDLK_ESCAPE) running = false;
-                if (event.key.key == SDLK_SPACE) paused = !paused;
-                if (event.key.key == SDLK_N && paused) world.advance_week();
+                if (event.key.key == SDLK_SPACE) {
+                    if (world.snapshot().bankrupt) {
+                        feedback = "Bankrupt. Press Backspace to start a new town.";
+                    } else {
+                        simulation_started = true;
+                        paused = !paused;
+                        feedback = paused ? "Simulation paused." : "Simulation running. Weekly cashflow has started.";
+                    }
+                    feedback_until = SDL_GetTicks() + 3500;
+                }
+                if (event.key.key == SDLK_N && paused && simulation_started &&
+                    !world.snapshot().bankrupt) world.advance_week();
+                if (event.key.key == SDLK_BACKSPACE) {
+                    world = grace::World{};
+                    simulation_started = false;
+                    paused = true;
+                    budget_open = false;
+                    painting_roads = false;
+                    last_week = SDL_GetTicks();
+                    feedback = "New town ready. Press Space when your setup is complete.";
+                    feedback_until = SDL_GetTicks() + 4000;
+                }
+                if (event.key.key == SDLK_B) budget_open = !budget_open;
+                if (event.key.key == SDLK_G && !world.snapshot().bankrupt) {
+                    const int next = (static_cast<int>(world.snapshot().giving_policy) + 1) % 3;
+                    world.set_giving_policy(static_cast<grace::GivingPolicy>(next));
+                    feedback = std::string("Giving set to ") + giving_name(world.snapshot().giving_policy) + ".";
+                    feedback_until = SDL_GetTicks() + 3500;
+                }
+                if (event.key.key == SDLK_O && !world.snapshot().bankrupt) {
+                    const int next = (static_cast<int>(world.snapshot().service_budget) + 1) % 3;
+                    world.set_service_budget(static_cast<grace::ServiceBudget>(next));
+                    feedback = std::string("Services set to ") + service_name(world.snapshot().service_budget) + ".";
+                    feedback_until = SDL_GetTicks() + 3500;
+                }
                 if (event.key.key == SDLK_V) {
                     world.set_care_priority(!world.snapshot().care_first);
                     feedback = world.snapshot().care_first
@@ -524,6 +580,22 @@ int main(int argc, char** argv) {
                 float mx = event.button.x;
                 float my = event.button.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                if (budget_open) {
+                    if (event.button.button == SDL_BUTTON_RIGHT) budget_open = false;
+                    if (event.button.button == SDL_BUTTON_LEFT &&
+                        !world.snapshot().bankrupt) {
+                        for (int choice = 0; choice < 3; ++choice) {
+                            const float left = 205.0f + choice * 205.0f;
+                            if (mx >= left && mx < left + 185.0f) {
+                                if (my >= 250 && my < 284)
+                                    world.set_giving_policy(static_cast<grace::GivingPolicy>(choice));
+                                if (my >= 340 && my < 374)
+                                    world.set_service_budget(static_cast<grace::ServiceBudget>(choice));
+                            }
+                        }
+                    }
+                    continue;
+                }
                 if (event.button.button == SDL_BUTTON_LEFT && my >= 17 && my < 59 &&
                     mx >= margin && mx < margin + 5 * 52) {
                     const int tool = static_cast<int>((mx - margin) / 52);
@@ -576,12 +648,17 @@ int main(int argc, char** argv) {
         if (!paused && now - last_week >= 2500) {
             world.advance_week();
             last_week = now;
+            if (world.snapshot().bankrupt) {
+                paused = true;
+                feedback = "BANKRUPT: weekly expenses emptied the treasury. Press Backspace for a new town.";
+                feedback_until = now + 10000;
+            }
         }
         if (soak_seconds > 0 && now - last_autoplay >= 2500) {
             autoplay_step(world);
             last_autoplay = now;
         }
-        title(window, world.snapshot(), selected, paused);
+        title(window, world.snapshot(), selected, paused, simulation_started);
         SDL_SetRenderDrawColor(renderer, 34, 51, 55, 255);
         SDL_RenderClear(renderer);
 
@@ -599,8 +676,10 @@ int main(int argc, char** argv) {
         }
         const auto state = world.snapshot();
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-        SDL_RenderDebugTextFormat(renderer, 300, 14, "WEEK %d%s  PEOPLE %d/%d  JOY %d",
-                                  state.week, paused ? " PAUSED" : "", state.population,
+        SDL_RenderDebugTextFormat(renderer, 300, 14, "WEEK %d %s  PEOPLE %d/%d  JOY %d",
+                                  state.week, state.bankrupt ? "BANKRUPT" :
+                                  !simulation_started ? "SETUP" : paused ? "PAUSED" : "RUNNING",
+                                  state.population,
                                   state.capacity, state.happiness);
         SDL_RenderDebugTextFormat(renderer, 300, 34,
             "FUNDS %d  IN %d  OUT %d  NET %+d  |  %s (%d)",
@@ -613,7 +692,7 @@ int main(int argc, char** argv) {
         }
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugText(renderer, margin, 76,
-            "1-5 BUILD  3/4 COVERAGE  E GATHER  F FOOD  V PRIORITY  RIGHT CLEAR  SPACE PAUSE  WASD PAN  WHEEL ZOOM");
+            "SPACE PLAY/PAUSE  B BUDGET  G GIVING  O SERVICES  1-5 BUILD  E/F EVENTS  RIGHT CLEAR  WASD PAN");
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
@@ -668,6 +747,43 @@ int main(int argc, char** argv) {
                 SDL_RenderRect(renderer, &rect);
         }
         SDL_SetRenderClipRect(renderer, nullptr);
+        if (budget_open) {
+            fill(renderer, {170, 155, 660, 270}, {29, 45, 46});
+            SDL_SetRenderDrawColor(renderer, 246, 221, 154, 255);
+            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O");
+            SDL_RenderDebugTextFormat(renderer, 205, 198,
+                "IN: grant %d + giving %d = %d", state.grant_income,
+                state.giving_income, state.weekly_income);
+            SDL_RenderDebugTextFormat(renderer, 205, 216,
+                "OUT: roads/homes %d + services %d + community %d = %d    NET %+d",
+                state.building_upkeep, state.service_upkeep,
+                state.community_upkeep, state.weekly_upkeep,
+                state.weekly_income - state.weekly_upkeep);
+            SDL_RenderDebugText(renderer, 205, 237, "GIVING: more income can strain household wellbeing");
+            constexpr std::array<const char*, 3> giving_labels{"GENTLE", "BALANCED", "AMBITIOUS"};
+            constexpr std::array<const char*, 3> service_labels{"LEAN", "BALANCED", "GENEROUS"};
+            for (int choice = 0; choice < 3; ++choice) {
+                const float left = 205.0f + choice * 205.0f;
+                fill(renderer, {left, 250, 185, 34},
+                     static_cast<int>(state.giving_policy) == choice
+                         ? Color{120, 106, 62} : Color{65, 80, 78});
+                fill(renderer, {left, 340, 185, 34},
+                     static_cast<int>(state.service_budget) == choice
+                         ? Color{120, 106, 62} : Color{65, 80, 78});
+                SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+                SDL_RenderDebugText(renderer, left + 12, 262, giving_labels[choice]);
+                SDL_RenderDebugText(renderer, left + 12, 352, service_labels[choice]);
+            }
+            SDL_RenderDebugText(renderer, 205, 287,
+                "GENTLE 1/RES +1 NEEDS   BALANCED 1.5/RES   AMBITIOUS 2/RES -3 NEEDS");
+            SDL_RenderDebugText(renderer, 205, 305, "SERVICES: higher upkeep improves care and belonging");
+            SDL_RenderDebugText(renderer, 205, 377,
+                "LEAN HALF COST +3 NEEDS   BALANCED +7   GENEROUS DOUBLE COST +11");
+            SDL_RenderDebugText(renderer, 205, 393,
+                state.bankrupt ? "BANKRUPT - BACKSPACE STARTS A NEW TOWN" :
+                !simulation_started ? "SETUP - BUILD NOW, THEN PRESS SPACE TO START CASHFLOW" :
+                "A NEGATIVE TREASURY AT WEEK END ENDS THIS TOWN");
+        }
         fill(renderer, {0, static_cast<float>(header + map_height), window_width, 76},
              {34, 51, 55});
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
@@ -733,6 +849,10 @@ int main(int argc, char** argv) {
             if (frame) SDL_DestroySurface(frame);
         }
         SDL_RenderPresent(renderer);
+        if (smoke && (!paused || simulation_started || world.snapshot().week != 1)) {
+            std::fprintf(stderr, "New game did not start in setup mode\n");
+            exit_status = 1;
+        }
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
                 if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;

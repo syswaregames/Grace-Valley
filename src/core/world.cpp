@@ -151,22 +151,30 @@ void World::rebuild_staffing() {
 }
 
 void World::update_households() {
+    const int service_gain = state_.service_budget == ServiceBudget::lean ? 3 :
+        state_.service_budget == ServiceBudget::generous ? 11 : 7;
+    const int giving_effect = state_.giving_policy == GivingPolicy::gentle ? 1 :
+        state_.giving_policy == GivingPolicy::ambitious ? -3 : 0;
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             if (tile(x, y) != Tile::home) continue;
             auto& need = needs_[index(x, y)];
             const bool connected = has_road(x, y);
-            const int park = connected && near(x, y, Tile::park, 4) ? 2 : 0;
+            const int park = connected && near(x, y, Tile::park, 4)
+                ? (state_.service_budget == ServiceBudget::lean ? 1 :
+                   state_.service_budget == ServiceBudget::generous ? 3 : 2) : 0;
             const bool gathering = state_.event_weeks_left > 0 &&
                                    state_.event_kind == EventKind::gathering;
             const bool food_drive = state_.event_weeks_left > 0 &&
                                     state_.event_kind == EventKind::food_drive;
             need.belonging = std::clamp(need.belonging +
-                (home_has_service(x, y, Tile::chapel) ? 7 : -5) + park +
+                (home_has_service(x, y, Tile::chapel) ? service_gain : -5) +
+                giving_effect + park +
                 (gathering ? 10 : 0) + (food_drive ? 1 : 0) -
                 (connected ? 0 : 8), 0, 100);
             need.care = std::clamp(need.care +
-                (home_has_service(x, y, Tile::pantry) ? 7 : -5) + park +
+                (home_has_service(x, y, Tile::pantry) ? service_gain : -5) +
+                giving_effect + park +
                 (food_drive ? 16 : 0) + (gathering ? 2 : 0) -
                 (connected ? 0 : 8), 0, 100);
         }
@@ -229,6 +237,7 @@ bool World::near(int x, int y, Tile type, int radius) const {
 }
 
 PlacementError World::placement_error(int x, int y, Tile type) const {
+    if (state_.bankrupt) return PlacementError::bankrupt;
     if (!inside(x, y)) return PlacementError::out_of_bounds;
     if (type == Tile::meadow || tile(x, y) != Tile::meadow) return PlacementError::occupied;
     if (terrain(x, y) == Terrain::water) return PlacementError::water;
@@ -256,7 +265,7 @@ bool World::place(int x, int y, Tile type) {
 }
 
 bool World::remove(int x, int y) {
-    if (!inside(x, y) || tile(x, y) == Tile::meadow ||
+    if (state_.bankrupt || !inside(x, y) || tile(x, y) == Tile::meadow ||
         (x == anchor_x && y == anchor_y)) return false;
     tiles_[index(x, y)] = Tile::meadow;
     needs_[index(x, y)] = HouseholdNeeds{};
@@ -311,14 +320,26 @@ Snapshot World::evaluate() const {
         }
     }
     next.population = std::min(next.population, next.capacity);
-    next.weekly_income = 10 + next.population * 3 / 2;
-    next.weekly_upkeep = homes + chapels * 4 + pantries * 3 + parks +
-                         (roads + 2) / 3 + next.population / 2 +
-                         next.population * next.population / 150;
+    next.grant_income = 10;
+    next.giving_income = next.giving_policy == GivingPolicy::gentle
+        ? next.population : next.giving_policy == GivingPolicy::ambitious
+            ? next.population * 2 : next.population * 3 / 2;
+    next.weekly_income = next.grant_income + next.giving_income;
+    next.building_upkeep = homes + (roads + 2) / 3;
+    const int base_services = chapels * 4 + pantries * 3 + parks;
+    next.service_upkeep = next.service_budget == ServiceBudget::lean
+        ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
+            ? base_services * 2 : base_services;
+    next.community_upkeep = next.population / 2 +
+                            next.population * next.population / 150;
+    next.weekly_upkeep = next.building_upkeep + next.service_upkeep +
+                         next.community_upkeep;
     next.belonging = homes == 0 ? 60 : total_belonging / homes;
     next.care = homes == 0 ? 60 : total_care / homes;
     next.happiness = std::clamp((next.belonging + next.care) / 2 +
-                                    std::min(park_exposure * 2, 10) +
+                                    std::min(park_exposure *
+                                        (next.service_budget == ServiceBudget::lean ? 1 :
+                                         next.service_budget == ServiceBudget::generous ? 3 : 2), 10) +
                                     (next.event_weeks_left > 0 ?
                                         (next.event_kind == EventKind::gathering ? 8 : 4) : 0) -
                                     (next.connected_homes < homes ? 10 : 0), 0, 100);
@@ -326,13 +347,19 @@ Snapshot World::evaluate() const {
 }
 
 void World::advance_week() {
+    if (state_.bankrupt) return;
     rebuild_staffing();
     state_ = evaluate();
+    state_.treasury += state_.weekly_income - state_.weekly_upkeep;
+    if (state_.treasury < 0) {
+        state_.bankrupt = true;
+        ++state_.week;
+        return;
+    }
     const int arrival = (state_.happiness >= 55 ? 2 : 1) +
         (state_.event_weeks_left > 0 && state_.event_kind == EventKind::gathering ? 1 : 0);
     state_.population = std::min(state_.capacity, state_.population + arrival);
     state_ = evaluate();
-    state_.treasury += state_.weekly_income - state_.weekly_upkeep;
     update_households();
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
@@ -341,12 +368,26 @@ void World::advance_week() {
 }
 
 void World::set_care_priority(bool enabled) {
+    if (state_.bankrupt) return;
     state_.care_first = enabled;
     rebuild_staffing();
     state_ = evaluate();
 }
 
+void World::set_giving_policy(GivingPolicy policy) {
+    if (state_.bankrupt) return;
+    state_.giving_policy = policy;
+    state_ = evaluate();
+}
+
+void World::set_service_budget(ServiceBudget budget) {
+    if (state_.bankrupt) return;
+    state_.service_budget = budget;
+    state_ = evaluate();
+}
+
 EventError World::can_host_event(EventKind kind) const {
+    if (state_.bankrupt) return EventError::bankrupt;
     if (state_.population < 2) return EventError::no_people;
     if (state_.week - last_event_week_ < 6) return EventError::cooldown;
     if (state_.treasury < (kind == EventKind::food_drive ? 25 : 30))

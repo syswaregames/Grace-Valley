@@ -16,16 +16,20 @@ A cozy city builder about growing a welcoming valley community. Build roads and 
 | Organize a food drive | `F` (25 funds) |
 | Place selected building | Left click |
 | Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
+| Start the weekly simulation / pause or resume | `Space` |
+| Open the budget | `B` (click a policy to select it) |
+| Cycle giving policy | `G` |
+| Cycle service budget | `O` |
+| Start a new town after bankruptcy | `Backspace` |
 | Remove a building | Right click |
-| Pause or resume | `Space` |
-| Advance one week while paused | `N` |
+| Advance one week while paused, after starting | `N` |
 | Pan the camera | `WASD`, arrow keys, or middle mouse drag |
 | Zoom at the pointer | Mouse wheel |
 | Zoom from the center | `+` and `-` |
 | Reset the camera | `R` |
 | Quit | `Esc` |
 
-Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and active tool. The lower bar shows access and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
+New games begin in **Setup** with the weekly clock stopped. Build and set the budget before pressing `Space` to begin weekly cashflow. Construction still costs funds during setup. Extend roads from the starting chapel. Homes and services need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. The pond blocks construction; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and active tool. The lower bar shows access and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.
@@ -36,9 +40,9 @@ Each home has **belonging** and **care** needs that change weekly. Staffed chape
 
 ### Funds
 
-The top bar shows **IN**, **OUT**, and **NET** for the next week at the current town size. Weekly income is a small founding grant (10) plus `1.5 × population`, rounded down. Weekly upkeep pays for homes (1 each), chapels (4), pantries (3), parks (1), roads (1 per three road tiles, rounded up), and growing resident support and coordination costs (`population / 2 + population² / 150`, rounded down by each term). Funds fall when **OUT** exceeds **IN**. Construction and events are extra one-time expenses. Building is blocked if it cannot be paid for, but removing buildings is free and can bring upkeep down. The founding grant keeps a pared-back town from being permanently trapped in debt.
+The top bar shows **IN**, **OUT**, and **NET** for the next week at the current town size. Press `B` for the budget breakdown and clickable policies. The founding grant is 10 per week. **Giving** can be Gentle (1 per resident), Balanced (1.5 per resident, rounded down), or Ambitious (2 per resident). Gentle giving slightly helps household wellbeing; Ambitious giving strains it. **Services** can be Lean (half service upkeep, rounded up), Balanced, or Generous (double service upkeep). Funding changes how strongly staffed chapels and pantries meet needs. Homes and roads have fixed upkeep; resident support and coordination costs grow with population. Construction and events are separate one-time expenses. If weekly cashflow takes the treasury below zero, the town is **bankrupt** and the simulation ends. Press `Backspace` to start a new town.
 
-This is a first balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios; excessive expansion without service planning creates a deficit. Human playtesting will decide whether the pace and costs feel fair.
+This is an early balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios; an overbuilt town reaches bankruptcy. Human playtesting will decide whether the choices and pace feel fair.
 
 ## Build in Visual Studio
 
@@ -66,7 +70,7 @@ The first configure downloads SDL3 3.4.18 unless a compatible SDL3 package is al
 
 ## Verification
 
-`ctest` runs rule checks and accelerated compact, spread, and event-led town scenarios. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png` or `--capture-roads build/roads-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
+`ctest` runs rule checks, accelerated town scenarios, and setup and road drag smoke tests. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`, `--capture-roads build/roads-preview.png`, or `--capture-budget build/budget-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
 
 ## Project layout
 

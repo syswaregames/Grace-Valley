@@ -17,6 +17,36 @@ int main() {
     assert(start.capacity == 4);
     assert(start.weekly_income == 10);
     assert(start.weekly_upkeep == 8);
+    assert(start.weekly_income == start.grant_income + start.giving_income);
+    assert(start.weekly_upkeep == start.building_upkeep + start.service_upkeep +
+                                  start.community_upkeep);
+    grace::World forecast;
+    const auto first_week = forecast.snapshot();
+    forecast.advance_week();
+    assert(forecast.snapshot().treasury == first_week.treasury +
+           first_week.weekly_income - first_week.weekly_upkeep);
+    grace::World lean_budget;
+    grace::World generous_budget;
+    assert(lean_budget.place(11, 9, grace::Tile::pantry));
+    assert(generous_budget.place(11, 9, grace::Tile::pantry));
+    lean_budget.set_service_budget(grace::ServiceBudget::lean);
+    generous_budget.set_service_budget(grace::ServiceBudget::generous);
+    assert(lean_budget.snapshot().service_upkeep <
+           generous_budget.snapshot().service_upkeep);
+    lean_budget.advance_week();
+    generous_budget.advance_week();
+    assert(generous_budget.household_needs(10, 7).care >
+           lean_budget.household_needs(10, 7).care);
+    grace::World gentle_giving;
+    grace::World ambitious_giving;
+    gentle_giving.set_giving_policy(grace::GivingPolicy::gentle);
+    ambitious_giving.set_giving_policy(grace::GivingPolicy::ambitious);
+    gentle_giving.advance_week();
+    ambitious_giving.advance_week();
+    assert(ambitious_giving.snapshot().giving_income >
+           gentle_giving.snapshot().giving_income);
+    assert(ambitious_giving.household_needs(10, 7).belonging <
+           gentle_giving.household_needs(10, 7).belonging);
     assert(!world.place(-1, 0, grace::Tile::road));
     assert(!world.place(0, 0, grace::Tile::home));
     assert(world.placement_error(0, 0, grace::Tile::road) ==

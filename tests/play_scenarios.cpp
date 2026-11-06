@@ -44,7 +44,7 @@ int main() {
         !run_weeks(compact, 24)) return 1;
     report("compact", compact);
     if (compact.snapshot().population < 8 || compact.snapshot().happiness < 70 ||
-        compact.snapshot().treasury < 0) return 2;
+        compact.snapshot().bankrupt) return 2;
 
     grace::World spread;
     if (!build(spread, 11, 9, grace::Tile::pantry) ||
@@ -57,7 +57,7 @@ int main() {
         !run_weeks(spread, 24)) return 3;
     report("spread", spread);
     if (spread.snapshot().population < 8 || spread.snapshot().happiness < 70 ||
-        spread.snapshot().treasury < 0) return 4;
+        spread.snapshot().bankrupt) return 4;
 
     grace::World event_led;
     for (int week = 0; week < 24; ++week) {
@@ -67,11 +67,23 @@ int main() {
     }
     report("event-led", event_led);
     if (event_led.snapshot().care < 50 || event_led.snapshot().happiness < 70 ||
-        event_led.snapshot().treasury < 0) return 6;
+        event_led.snapshot().bankrupt) return 6;
+
+    grace::World costly_budget;
+    if (!build(costly_budget, 11, 9, grace::Tile::pantry) ||
+        !build(costly_budget, 13, 7, grace::Tile::chapel) ||
+        !build(costly_budget, 13, 9, grace::Tile::park) ||
+        !build(costly_budget, 9, 7, grace::Tile::home)) return 11;
+    costly_budget.set_giving_policy(grace::GivingPolicy::gentle);
+    costly_budget.set_service_budget(grace::ServiceBudget::generous);
+    if (!run_weeks(costly_budget, 30) || !costly_budget.snapshot().bankrupt)
+        return 11;
+    report("costly budget", costly_budget);
 
     if (!run_weeks(compact, 456) || !run_weeks(spread, 456)) return 7;
     report("compact long run", compact);
     report("spread long run", spread);
+    if (compact.snapshot().bankrupt || spread.snapshot().bankrupt) return 7;
 
     grace::World expanding;
     auto build_first = [&](grace::Tile type) {
@@ -93,16 +105,13 @@ int main() {
         if (week % 9 == 0) build_first(grace::Tile::road);
     }
     report("overbuilt long run", expanding);
-    if (expanding.snapshot().treasury >= 0 ||
+    if (!expanding.snapshot().bankrupt || expanding.snapshot().treasury >= 0 ||
         expanding.snapshot().weekly_upkeep <= expanding.snapshot().weekly_income)
         return 9;
-    for (int y = 0; y < grace::World::height; ++y)
-        for (int x = 0; x < grace::World::width; ++x)
-            if ((x != 12 || y != 8) && expanding.tile(x, y) != grace::Tile::meadow)
-                expanding.remove(x, y);
-    if (expanding.snapshot().weekly_upkeep >= expanding.snapshot().weekly_income ||
-        !run_weeks(expanding, 700) || expanding.snapshot().treasury <= 0)
-        return 10;
-    report("recovered after downsizing", expanding);
+    const int final_week = expanding.snapshot().week;
+    expanding.advance_week();
+    if (expanding.snapshot().week != final_week ||
+        expanding.place(16, 8, grace::Tile::road) ||
+        expanding.remove(11, 8)) return 10;
     return 0;
 }

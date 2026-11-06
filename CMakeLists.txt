@@ -57,6 +57,9 @@ if(GRACE_BUILD_TESTS)
   target_link_libraries(grace_play_scenarios PRIVATE grace_core)
   add_test(NAME grace_play_scenarios COMMAND grace_play_scenarios)
   if(GRACE_BUILD_GAME)
+    add_test(NAME grace_setup_smoke COMMAND grace-valley --smoke)
+    set_tests_properties(grace_setup_smoke PROPERTIES
+      ENVIRONMENT "SDL_VIDEODRIVER=dummy")
     add_test(NAME grace_drag_smoke COMMAND grace-valley --drag-smoke)
     set_tests_properties(grace_drag_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")
