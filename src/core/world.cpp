@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <queue>
+#include <vector>
 
 namespace grace {
 
@@ -11,6 +12,7 @@ constexpr int index(int x, int y) { return y * World::width + x; }
 constexpr int anchor_x = 12;
 constexpr int anchor_y = 8;
 constexpr int plant_output = 12;
+constexpr int road_upgrade_cost = 20;
 constexpr int power_need(Tile tile) {
     switch (tile) {
     case Tile::home: case Tile::residential_zone: return 1;
@@ -41,6 +43,8 @@ World::World() {
     rebuild_power();
     rebuild_staffing();
     state_ = evaluate();
+    rebuild_traffic();
+    state_ = evaluate();
 }
 
 bool World::inside(int x, int y) const {
@@ -63,6 +67,19 @@ bool World::is_connected(int x, int y) const {
 
 bool World::is_powered(int x, int y) const {
     return inside(x, y) && powered_[index(x, y)];
+}
+
+int World::traffic_at(int x, int y) const {
+    return inside(x, y) && tile(x, y) == Tile::road ? traffic_[index(x, y)] : 0;
+}
+
+int World::road_capacity(int x, int y) const {
+    return inside(x, y) && tile(x, y) == Tile::road
+        ? (upgraded_roads_[index(x, y)] ? 14 : 6) : 0;
+}
+
+bool World::is_upgraded_road(int x, int y) const {
+    return inside(x, y) && tile(x, y) == Tile::road && upgraded_roads_[index(x, y)];
 }
 
 bool World::is_active_service(int x, int y) const {
@@ -168,6 +185,90 @@ void World::rebuild_power() {
                 type == Tile::industrial_zone)
                 powered_[index(x, y)] = has_road(x, y) && available >= power_need(type);
         }
+}
+
+void World::rebuild_traffic() {
+    traffic_.fill(0);
+    struct Job { int x; int y; int remaining; };
+    std::vector<Job> jobs;
+    std::vector<int> homes;
+    for (int y = 0; y < height; ++y)
+        for (int x = 0; x < width; ++x) {
+            const Tile type = tile(x, y);
+            if (!powered_[index(x, y)]) continue;
+            if (type == Tile::home) homes.push_back(index(x, y));
+            else if (type == Tile::commercial || type == Tile::industrial)
+                jobs.push_back({x, y, type == Tile::commercial ? 4 : 6});
+        }
+    if (homes.empty() || jobs.empty()) return;
+    std::vector<int> residents(homes.size(), 0);
+    for (int person = 0; person < state_.population; ++person) {
+        bool assigned = false;
+        for (std::size_t offset = 0; offset < homes.size(); ++offset) {
+            const std::size_t home = (static_cast<std::size_t>(person) + offset) % homes.size();
+            if (residents[home] < 4) {
+                ++residents[home];
+                assigned = true;
+                break;
+            }
+        }
+        if (!assigned) break;
+    }
+    constexpr int dx[] = {-1, 1, 0, 0};
+    constexpr int dy[] = {0, 0, -1, 1};
+    for (std::size_t home = 0; home < homes.size(); ++home) {
+        if (residents[home] == 0) continue;
+        std::array<int, width * height> distance;
+        std::array<int, width * height> parent;
+        distance.fill(-1);
+        parent.fill(-1);
+        std::queue<int> pending;
+        const int hx = homes[home] % width;
+        const int hy = homes[home] / width;
+        for (int direction = 0; direction < 4; ++direction) {
+            const int nx = hx + dx[direction], ny = hy + dy[direction];
+            if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
+                connected_[index(nx, ny)] && distance[index(nx, ny)] < 0) {
+                distance[index(nx, ny)] = 0;
+                pending.push(index(nx, ny));
+            }
+        }
+        while (!pending.empty()) {
+            const int current = pending.front();
+            pending.pop();
+            const int x = current % width, y = current / width;
+            for (int direction = 0; direction < 4; ++direction) {
+                const int nx = x + dx[direction], ny = y + dy[direction];
+                if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
+                    connected_[index(nx, ny)] && distance[index(nx, ny)] < 0) {
+                    distance[index(nx, ny)] = distance[current] + 1;
+                    parent[index(nx, ny)] = current;
+                    pending.push(index(nx, ny));
+                }
+            }
+        }
+        for (int commuter = 0; commuter < residents[home]; ++commuter) {
+            int best_job = -1, best_road = -1, best_distance = width * height;
+            for (std::size_t j = 0; j < jobs.size(); ++j) {
+                if (jobs[j].remaining == 0) continue;
+                for (int direction = 0; direction < 4; ++direction) {
+                    const int nx = jobs[j].x + dx[direction];
+                    const int ny = jobs[j].y + dy[direction];
+                    if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
+                        distance[index(nx, ny)] >= 0 &&
+                        distance[index(nx, ny)] < best_distance) {
+                        best_distance = distance[index(nx, ny)];
+                        best_job = static_cast<int>(j);
+                        best_road = index(nx, ny);
+                    }
+                }
+            }
+            if (best_job < 0) break;
+            --jobs[static_cast<std::size_t>(best_job)].remaining;
+            for (int road = best_road; road >= 0; road = parent[road])
+                ++traffic_[static_cast<std::size_t>(road)];
+        }
+    }
 }
 
 void World::rebuild_staffing() {
@@ -322,6 +423,8 @@ bool World::place(int x, int y, Tile type) {
     state_ = evaluate();
     rebuild_staffing();
     state_ = evaluate();
+    rebuild_traffic();
+    state_ = evaluate();
     return true;
 }
 
@@ -329,12 +432,25 @@ bool World::remove(int x, int y) {
     if (state_.bankrupt || !inside(x, y) || tile(x, y) == Tile::meadow ||
         (x == anchor_x && y == anchor_y)) return false;
     tiles_[index(x, y)] = Tile::meadow;
+    upgraded_roads_[index(x, y)] = false;
     needs_[index(x, y)] = HouseholdNeeds{};
     rebuild_connections();
     rebuild_power();
     rebuild_staffing();
     state_ = evaluate();
     rebuild_staffing();
+    state_ = evaluate();
+    rebuild_traffic();
+    state_ = evaluate();
+    return true;
+}
+
+bool World::upgrade_road(int x, int y) {
+    if (state_.bankrupt || !inside(x, y) || tile(x, y) != Tile::road ||
+        upgraded_roads_[index(x, y)] || state_.treasury < road_upgrade_cost)
+        return false;
+    upgraded_roads_[index(x, y)] = true;
+    state_.treasury -= road_upgrade_cost;
     state_ = evaluate();
     return true;
 }
@@ -352,6 +468,9 @@ Snapshot World::evaluate() const {
     next.power_demand = 0;
     next.powered_demand = 0;
     next.unpowered_buildings = 0;
+    next.commuters = 0;
+    next.congested_roads = 0;
+    next.peak_traffic = 0;
     int parks = 0;
     int connected_parks = 0;
     int park_exposure = 0;
@@ -362,6 +481,7 @@ Snapshot World::evaluate() const {
     int chapels = 0;
     int pantries = 0;
     int plants = 0;
+    int upgraded_count = 0;
     int total_belonging = 0;
     int total_care = 0;
     for (int y = 0; y < height; ++y) {
@@ -369,7 +489,11 @@ Snapshot World::evaluate() const {
             switch (tile(x, y)) {
             case Tile::road:
                 ++roads;
+                upgraded_count += upgraded_roads_[index(x, y)];
                 if (connected_[index(x, y)]) ++next.connected_roads;
+                next.peak_traffic = std::max(next.peak_traffic, traffic_[index(x, y)]);
+                if (traffic_[index(x, y)] > road_capacity(x, y))
+                    ++next.congested_roads;
                 break;
             case Tile::home:
                 ++homes;
@@ -427,6 +551,7 @@ Snapshot World::evaluate() const {
     next.building_upkeep = homes + (roads + 2) / 3 +
                            all_shops * 2 + all_workshops * 3;
     next.building_upkeep += plants * 6;
+    next.building_upkeep += upgraded_count;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
         ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
@@ -444,8 +569,10 @@ Snapshot World::evaluate() const {
                                     (next.event_weeks_left > 0 ?
                                         (next.event_kind == EventKind::gathering ? 8 : 4) : 0) -
                                     (next.connected_homes < homes ? 10 : 0) -
+                                    std::min(next.congested_roads * 2, 12) -
                                     std::min(next.workshops * 2, 12), 0, 100);
     next.jobs = next.shops * 4 + next.workshops * 6;
+    next.commuters = std::min(next.population, next.jobs);
     const int tax_growth = next.tax_policy == TaxPolicy::low ? 12 :
                            next.tax_policy == TaxPolicy::high ? -18 : 0;
     next.residential_demand = std::clamp(45 + next.jobs * 5 +
@@ -499,6 +626,8 @@ void World::advance_week() {
     if (state_.event_weeks_left > 0) --state_.event_weeks_left;
     ++state_.week;
     rebuild_staffing();
+    state_ = evaluate();
+    rebuild_traffic();
     state_ = evaluate();
 }
 

@@ -17,6 +17,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Organize a food drive | `F` (25 funds) |
 | Place selected building | Left click |
 | Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
+| Upgrade a busy road | Click **Upgrade Road** in the sidebar or press `U`, then click road tiles; `Shift` + left click is a shortcut |
 | Paint zoning areas | Select residential (`2`), commercial (`3`), or industrial (`4`); hold left click and drag |
 | Start the weekly simulation / pause or resume | Click **Play/Pause** or press `Space` |
 | Open the budget | Click **Budget** or press `B` (click a policy to select it) |
@@ -36,6 +37,12 @@ New games begin in **Setup** with the weekly clock stopped. Lay out roads and zo
 
 Roads now draw as connected streets: straight runs, corners, junctions, and dead ends change shape as you build. Hovering a valid road tile shows the proposed connection and updates its neighboring road shapes in the preview.
 Start a road stroke on a placeable tile or any existing road. Dragging builds each reachable tile along the path and charges its usual construction cost; the stroke stops at blocked or unaffordable tiles. After deleting a link, you can build from an isolated road to reconnect it to the chapel. Isolated roads and their buildings remain inactive until the connection is restored.
+
+### Cars and traffic
+
+Residents commute from powered homes to powered shops and workshops along connected roads. Small cars show the resulting flow. Each ordinary road tile handles 6 trips; overloaded tiles turn **amber**, then **red** at more than twice their capacity. The top bar reports traffic alerts, the sidebar shows the number of hotspots and peak flow, and hovering a road shows its traffic and capacity. Each congested tile lowers town happiness by 2, up to a 12-point penalty.
+
+Click **Upgrade Road** in the sidebar or press `U`, then click a road tile to increase its capacity to 14. `Shift` + left click upgrades directly. An upgrade costs 20 funds plus 1 fund in weekly upkeep. A busy corridor may need several upgraded tiles. Right clicking removes a road and its upgrade. Road upgrades are an early traffic solution; commuters currently choose a shortest road route, so parallel streets may need later route-choice tuning.
 
 ### Zoning and demand
 
@@ -81,7 +88,7 @@ The first configure downloads SDL3 3.4.18 unless a compatible SDL3 package is al
 
 ## Verification
 
-`ctest` runs rule checks, accelerated town scenarios, and setup, road drag, zoning toolbar, and bankruptcy screen smoke tests. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`, `--capture-roads build/roads-preview.png`, `--capture-zones build/zoning-preview.png`, `--capture-budget build/budget-preview.png`, `--capture-options build/options-preview.png`, or `--capture-bankrupt build/bankruptcy-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
+`ctest` runs rule checks, accelerated town scenarios, and setup, road drag, zoning, power, traffic toolbar, and bankruptcy screen smoke tests. For a headless render check on Windows, set `SDL_VIDEODRIVER=dummy` and run the executable with `--capture build/coverage-preview.png`, `--capture-roads build/roads-preview.png`, `--capture-zones build/zoning-preview.png`, `--capture-traffic build/traffic-preview.png`, `--capture-budget build/budget-preview.png`, `--capture-options build/options-preview.png`, or `--capture-bankrupt build/bankruptcy-preview.png`. The `--soak 1200` argument runs an automated 20-minute session with periodic building and events, then prints its final town state. These modes are for development; a person still needs to judge pacing and clarity with the [playtest script](docs/playtest.md).
 
 ## Project layout
 

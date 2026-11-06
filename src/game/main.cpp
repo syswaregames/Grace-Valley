@@ -25,6 +25,7 @@ constexpr int window_height = map_height + header + 118;
 constexpr SDL_FRect play_button{625, 17, 102, 42};
 constexpr SDL_FRect budget_button{737, 17, 102, 42};
 constexpr SDL_FRect options_button{849, 17, 102, 42};
+constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
     return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
             static_cast<float>(140 + (index / 2) * 82), 82, 76};
@@ -254,7 +255,7 @@ unsigned road_sides(const grace::World& world, int x, int y) {
 }
 
 void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
-               const Camera& camera) {
+               const Camera& camera, Uint64 animation_ms) {
     const auto type = world.tile(x, y);
     const auto terrain = world.terrain(x, y);
     const bool connected = world.is_connected(x, y);
@@ -289,8 +290,14 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
     switch (type) {
     case grace::Tile::road: {
         const unsigned sides = road_sides(world, x, y);
-        const Color curb{188, 169, 135};
-        const Color street{111, 111, 105};
+        const bool upgraded = world.is_upgraded_road(x, y);
+        const int traffic = world.traffic_at(x, y);
+        const int capacity = world.road_capacity(x, y);
+        const bool busy = traffic > capacity;
+        const Color curb = upgraded ? Color{162, 184, 188} : Color{188, 169, 135};
+        const Color street = busy ? (traffic > capacity * 2
+            ? Color{172, 76, 68} : Color{176, 120, 63}) :
+            upgraded ? Color{76, 97, 110} : Color{111, 111, 105};
         const Color marking{231, 216, 171};
         shape(7, 7, 26, 26, curb);
         if (sides & north) shape(7, 0, 26, 20, curb);
@@ -319,6 +326,21 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
             !(sides & (east | west))) {
             shape(19, 3, 2, 7, marking);
             shape(19, 30, 2, 7, marking);
+        }
+        if (upgraded) {
+            if (sides & (east | west)) shape(0, 19, 40, 2, {217, 226, 219});
+            else shape(19, 0, 2, 40, {217, 226, 219});
+        }
+        if (traffic > 0) {
+            const int count = std::min(traffic, 2);
+            for (int car = 0; car < count; ++car) {
+                const float position = static_cast<float>(
+                    (animation_ms / 28 + x * 13 + y * 19 + car * 19) % 36);
+                const Color body = car == 0 ? Color{242, 229, 182} : Color{87, 197, 200};
+                if (sides & (east | west))
+                    shape(position, car == 0 ? 12 : 24, 5, 3, body);
+                else shape(car == 0 ? 12 : 24, position, 3, 5, body);
+            }
         }
         break;
     }
@@ -436,6 +458,8 @@ std::string town_advice(const grace::World& world) {
         return "No power: build a power plant (8) beside a connected road to grow zones.";
     if (state.unpowered_buildings > 0)
         return "Power shortage: add a connected plant. Amber lightning marks unpowered tiles.";
+    if (state.congested_roads > 0)
+        return "Traffic alert: amber/red roads are overloaded. Press U, then click a road to upgrade it.";
     int homes = 0;
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
@@ -561,15 +585,18 @@ int main(int argc, char** argv) {
     const bool zone_smoke = argc > 1 && std::string(argv[1]) == "--zone-smoke";
     const bool toolbar_smoke = argc > 1 && std::string(argv[1]) == "--toolbar-smoke";
     const bool power_smoke = argc > 1 && std::string(argv[1]) == "--power-smoke";
+    const bool traffic_smoke = argc > 1 && std::string(argv[1]) == "--traffic-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
+    const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads ||
-         capture_budget || capture_options || capture_zones || capture_bankrupt);
+         capture_budget || capture_options || capture_zones || capture_traffic ||
+         capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
     int exit_status = 0;
@@ -630,26 +657,39 @@ int main(int argc, char** argv) {
         world.place(16, 8, grace::Tile::commercial_zone);
         world.place(15, 9, grace::Tile::industrial_zone);
     }
+    if (capture_traffic || traffic_smoke) {
+        world.place(15, 7, grace::Tile::power_plant);
+        world.place(9, 7, grace::Tile::home);
+        world.place(8, 7, grace::Tile::home);
+        world.place(13, 9, grace::Tile::industrial_zone);
+        world.place(14, 9, grace::Tile::commercial_zone);
+        world.place(15, 9, grace::Tile::commercial_zone);
+        for (int week = 0; week < 12; ++week) world.advance_week();
+    }
     Camera camera;
     grace::Tile selected = capture_zones ? grace::Tile::residential_zone :
         capture && !capture_roads && !capture_budget &&
-        !capture_options && !capture_bankrupt
+        !capture_options && !capture_traffic && !capture_bankrupt
             ? grace::Tile::pantry : grace::Tile::road;
     bool running = true;
     bool paused = soak_seconds == 0;
-    bool simulation_started = soak_seconds > 0 || capture_zones ||
+    bool simulation_started = soak_seconds > 0 || capture_zones || capture_traffic ||
         capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
     bool options_open = capture_options;
+    bool upgrade_mode = false;
     bool dragging = false;
     bool painting_tiles = false;
     int paint_x = 0, paint_y = 0;
-    std::string feedback = world.snapshot().bankrupt
+    std::string feedback = capture_traffic
+        ? "Traffic alert: upgrade amber roads to keep commutes moving."
+        : world.snapshot().bankrupt
         ? "BANKRUPT: review the budget or start a new town."
         : "Setup: build a power plant (8) by a connected road, then press Space to start.";
     Uint64 feedback_until = SDL_GetTicks() + 6000;
     Uint64 last_week = SDL_GetTicks();
     Uint64 last_frame = last_week;
+    Uint64 car_animation_ms = 0;
     Uint64 last_autoplay = last_week;
     const Uint64 started = last_week;
     constexpr std::array<grace::Tile, 8> tools{
@@ -665,6 +705,7 @@ int main(int argc, char** argv) {
         paused = true;
         budget_open = false;
         options_open = false;
+        upgrade_mode = false;
         dragging = false;
         painting_tiles = false;
         last_week = SDL_GetTicks();
@@ -789,6 +830,18 @@ int main(int argc, char** argv) {
         place.button.y = header + 9.5f * base_cell;
         SDL_PushEvent(&place);
     }
+    if (traffic_smoke) {
+        SDL_Event choose{};
+        choose.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        choose.button.button = SDL_BUTTON_LEFT;
+        choose.button.x = upgrade_button.x + upgrade_button.w / 2;
+        choose.button.y = upgrade_button.y + upgrade_button.h / 2;
+        SDL_PushEvent(&choose);
+        SDL_Event upgrade = choose;
+        upgrade.button.x = margin + 12.5f * base_cell;
+        upgrade.button.y = header + 8.5f * base_cell;
+        SDL_PushEvent(&upgrade);
+    }
     if (drag_smoke) {
         SDL_Event down{};
         down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
@@ -859,6 +912,11 @@ int main(int argc, char** argv) {
                 }
                 if (world.snapshot().bankrupt) continue;
                 if (event.key.key == SDLK_SPACE) toggle_play();
+                if (event.key.key == SDLK_U) {
+                    upgrade_mode = !upgrade_mode;
+                    if (upgrade_mode) { selected = grace::Tile::road; options_open = false; }
+                    painting_tiles = false;
+                }
                 if (event.key.key == SDLK_N) step_week();
                 if (event.key.key == SDLK_G) cycle_giving();
                 if (event.key.key == SDLK_O) cycle_services();
@@ -873,6 +931,7 @@ int main(int argc, char** argv) {
                     camera.zoom_at(1.0f / 1.15f, margin + map_width / 2.0f, header + map_height / 2.0f);
                 if (event.key.key >= SDLK_1 && event.key.key <= SDLK_8) {
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
+                    upgrade_mode = false;
                     options_open = false;
                     painting_tiles = false;
                 }
@@ -986,9 +1045,19 @@ int main(int argc, char** argv) {
                                 break;
                             }
                         } else {
+                            if (contains(upgrade_button, mx, my)) {
+                                upgrade_mode = !upgrade_mode;
+                                if (upgrade_mode) selected = grace::Tile::road;
+                                painting_tiles = false;
+                                feedback = upgrade_mode
+                                    ? "Road upgrade: click a road tile for 20 funds, +1 weekly upkeep."
+                                    : "Road upgrade mode off.";
+                                feedback_until = SDL_GetTicks() + 4000;
+                            }
                             for (std::size_t index = 0; index < tools.size(); ++index)
                                 if (contains(tool_button(static_cast<int>(index)), mx, my)) {
                                     selected = tools[index];
+                                    upgrade_mode = false;
                                     painting_tiles = false;
                                     feedback = std::string(grace::World::name(selected)) +
                                         " selected. Cost " +
@@ -1003,6 +1072,18 @@ int main(int argc, char** argv) {
                 int x, y;
                 if (camera.tile_at(mx, my, x, y)) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
+                        if (upgrade_mode || (SDL_GetModState() & SDL_KMOD_SHIFT)) {
+                            painting_tiles = false;
+                            if (world.upgrade_road(x, y))
+                                feedback = "Road upgraded: capacity 14, cost 20 funds, +1 weekly upkeep.";
+                            else if (world.tile(x, y) != grace::Tile::road)
+                                feedback = "Choose an existing road tile to upgrade.";
+                            else if (world.is_upgraded_road(x, y))
+                                feedback = "This road is already upgraded.";
+                            else feedback = "A road upgrade needs 20 funds.";
+                            feedback_until = SDL_GetTicks() + 4000;
+                            continue;
+                        }
                         const auto error = world.placement_error(x, y, selected);
                         if ((selected == grace::Tile::road || is_zone(selected)) &&
                             world.tile(x, y) == selected) {
@@ -1041,8 +1122,10 @@ int main(int argc, char** argv) {
         }
 
         const Uint64 now = SDL_GetTicks();
-        const float dt = std::min(0.05f, static_cast<float>(now - last_frame) / 1000.0f);
+        const Uint64 frame_ms = now - last_frame;
+        const float dt = std::min(0.05f, static_cast<float>(frame_ms) / 1000.0f);
         last_frame = now;
+        if (!paused) car_animation_ms += frame_ms;
         const bool* keys = SDL_GetKeyboardState(nullptr);
         const float movement = 300.0f * dt;
         camera.pan((keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT] ? movement : 0.0f) -
@@ -1093,23 +1176,28 @@ int main(int argc, char** argv) {
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
                 : "SELECT TOOLS AT RIGHT  |  DRAG ROADS AND ZONES  |  RIGHT CLICK CLEAR  |  WASD PAN  WHEEL ZOOM");
+        if (state.congested_roads > 0 && !state.bankrupt) {
+            SDL_SetRenderDrawColor(renderer, 249, 161, 106, 255);
+            SDL_RenderDebugTextFormat(renderer, 836, 76, "TRAFFIC ALERT %d", state.congested_roads);
+        }
         const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
             for (int x = 0; x < grace::World::width; ++x)
-                draw_tile(renderer, world, x, y, camera);
+                draw_tile(renderer, world, x, y, camera, car_animation_ms);
 
         float mx, my;
         if (capture) {
-            mx = margin + (capture_roads || capture_zones ? 10.5f : 11.5f) * base_cell;
-            my = header + 9.5f * base_cell;
+            mx = margin + (capture_traffic ? 12.5f :
+                capture_roads || capture_zones ? 10.5f : 11.5f) * base_cell;
+            my = header + (capture_traffic ? 8.5f : 9.5f) * base_cell;
         } else {
             SDL_GetMouseState(&mx, &my);
             SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
         }
         int hover_x = -1, hover_y = -1;
         const bool over_tile = camera.tile_at(mx, my, hover_x, hover_y);
-        const bool stroke_start = over_tile &&
+        const bool stroke_start = over_tile && !upgrade_mode &&
             (selected == grace::Tile::road || is_zone(selected)) &&
             world.tile(hover_x, hover_y) == selected;
         const bool service_view = selected == grace::Tile::chapel ||
@@ -1124,7 +1212,7 @@ int main(int argc, char** argv) {
         if (service_view)
             draw_coverage(renderer, world, preview ? &*preview : nullptr,
                           selected, camera, preview_valid);
-        if (selected == grace::Tile::road && over_tile &&
+        if (selected == grace::Tile::road && !upgrade_mode && over_tile &&
             world.can_place(hover_x, hover_y, selected)) {
             grace::World road_preview = world;
             road_preview.place(hover_x, hover_y, grace::Tile::road);
@@ -1136,13 +1224,17 @@ int main(int argc, char** argv) {
                 if (road_preview.tile(x, y) == grace::Tile::road &&
                     x >= 0 && x < grace::World::width &&
                     y >= 0 && y < grace::World::height)
-                    draw_tile(renderer, road_preview, x, y, camera);
+                    draw_tile(renderer, road_preview, x, y, camera, car_animation_ms);
             }
             auto ghost = camera.tile_rect(hover_x, hover_y);
             tint(renderer, ghost, {252, 210, 110}, 65);
         }
         if (over_tile) {
-            const Color preview = (world.can_place(hover_x, hover_y, selected) || stroke_start)
+            const bool valid = upgrade_mode
+                ? world.tile(hover_x, hover_y) == grace::Tile::road &&
+                  !world.is_upgraded_road(hover_x, hover_y) && state.treasury >= 20
+                : world.can_place(hover_x, hover_y, selected) || stroke_start;
+            const Color preview = valid
                 ? Color{253, 229, 153} : Color{225, 91, 83};
                 SDL_SetRenderDrawColor(renderer, preview.r, preview.g, preview.b, 255);
                 auto rect = camera.tile_rect(hover_x, hover_y);
@@ -1189,7 +1281,8 @@ int main(int argc, char** argv) {
             }
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 483, "ACTIVE TOOL");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 503, grace::World::name(selected));
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 503,
+                                upgrade_mode ? "Road upgrade" : grace::World::name(selected));
             if (category_for(selected) == ToolCategory::roads) {
                 SDL_RenderDebugText(renderer, sidebar_x + 12, 544, "ROAD NETWORK");
                 SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 564,
@@ -1220,13 +1313,15 @@ int main(int argc, char** argv) {
                         state.active_pantries);
                 }
             }
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 643,
+            SDL_RenderDebugTextFormat(renderer, sidebar_x + 12, 603,
+                "JAMS %d  PEAK %d", state.congested_roads, state.peak_traffic);
+            draw_button(renderer, upgrade_button, "UPGRADE ROAD 20F", upgrade_mode);
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
                                 "DRAG ROAD / ZONES");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 663,
-                                "CLICK CIVIC TOOLS");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 688,
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 691,
                                 "1-8 SHORTCUTS");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 708,
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
                                 "OPTIONS ABOVE");
         }
         if (budget_open) {
@@ -1238,7 +1333,7 @@ int main(int argc, char** argv) {
                 state.grant_income, state.giving_income,
                 state.tax_income, state.weekly_income);
             SDL_RenderDebugTextFormat(renderer, 205, 216,
-                "OUT: roads/homes %d + services %d + community %d = %d    NET %+d",
+                "OUT: structures %d + services %d + community %d = %d    NET %+d",
                 state.building_upkeep, state.service_upkeep,
                 state.community_upkeep, state.weekly_upkeep,
                 state.weekly_income - state.weekly_upkeep);
@@ -1332,6 +1427,8 @@ int main(int argc, char** argv) {
         SDL_RenderDebugTextFormat(renderer, 760, header + map_height + 10,
             "POWER %d/%d  NEED %d", state.powered_demand,
             state.power_capacity, state.power_demand);
+        SDL_RenderDebugTextFormat(renderer, 620, header + map_height + 10,
+            "JAMS %d PEAK %d", state.congested_roads, state.peak_traffic);
         std::string hint = now < feedback_until ? feedback :
             (over_tile ? placement_message(world.placement_error(hover_x, hover_y, selected)) :
                          town_advice(world));
@@ -1360,6 +1457,12 @@ int main(int argc, char** argv) {
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);
+            if (hovered == grace::Tile::road) {
+                hint = "Road traffic " + std::to_string(world.traffic_at(hover_x, hover_y)) +
+                    "/" + std::to_string(world.road_capacity(hover_x, hover_y)) +
+                    (world.is_upgraded_road(hover_x, hover_y)
+                        ? ". Upgraded road." : ". Press U, then click to upgrade for 20 funds.");
+            }
             if (hovered == grace::Tile::residential_zone ||
                 hovered == grace::Tile::commercial_zone ||
                 hovered == grace::Tile::industrial_zone) {
@@ -1460,6 +1563,13 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "Power toolbar or plant placement failed\n");
             exit_status = 1;
         }
+        if (traffic_smoke && (!upgrade_mode ||
+            !world.is_upgraded_road(12, 8) ||
+            world.traffic_at(12, 8) <= 6 ||
+            world.road_capacity(12, 8) != 14)) {
+            std::fprintf(stderr, "Traffic toolbar or road upgrade failed\n");
+            exit_status = 1;
+        }
         if (drag_smoke) {
             for (int x = 8; x <= 13; ++x)
                 if (x != 11 && world.tile(x, 9) != grace::Tile::road) exit_status = 1;
@@ -1472,6 +1582,7 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "Road drag smoke test failed\n");
         }
         if (smoke || capture || drag_smoke || zone_smoke || toolbar_smoke || power_smoke ||
+            traffic_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;

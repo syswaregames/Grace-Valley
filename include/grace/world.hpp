@@ -60,6 +60,9 @@ struct Snapshot {
     int power_demand = 0;
     int powered_demand = 0;
     int unpowered_buildings = 0;
+    int commuters = 0;
+    int congested_roads = 0;
+    int peak_traffic = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
     int event_cooldown = 0;
@@ -82,6 +85,9 @@ public:
     Terrain terrain(int x, int y) const;
     bool is_connected(int x, int y) const;
     bool is_powered(int x, int y) const;
+    int traffic_at(int x, int y) const;
+    int road_capacity(int x, int y) const;
+    bool is_upgraded_road(int x, int y) const;
     bool is_active_service(int x, int y) const;
     HouseholdNeeds household_needs(int x, int y) const;
     static bool within_service_range(int source_x, int source_y, int target_x, int target_y);
@@ -94,6 +100,7 @@ public:
     bool can_place(int x, int y, Tile type) const;
     bool place(int x, int y, Tile type);
     bool remove(int x, int y);
+    bool upgrade_road(int x, int y);
     void set_care_priority(bool enabled);
     void set_giving_policy(GivingPolicy policy);
     void set_service_budget(ServiceBudget budget);
@@ -111,6 +118,8 @@ private:
     std::array<Terrain, width * height> terrain_{};
     std::array<bool, width * height> connected_{};
     std::array<bool, width * height> powered_{};
+    std::array<bool, width * height> upgraded_roads_{};
+    std::array<int, width * height> traffic_{};
     std::array<bool, width * height> staffed_{};
     std::array<HouseholdNeeds, width * height> needs_{};
     Snapshot state_{};
@@ -120,6 +129,7 @@ private:
     bool has_adjacent_road(int x, int y) const;
     void rebuild_connections();
     void rebuild_power();
+    void rebuild_traffic();
     void rebuild_staffing();
     void update_households();
     void develop_zones(const Snapshot& demand_at_start);

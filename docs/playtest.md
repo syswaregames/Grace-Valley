@@ -9,16 +9,17 @@ This is the remaining human check for M1. It measures clarity and pacing as well
 3. Cycle business tax with `T`. Check whether the revenue and business demand tradeoff is clear.
 4. Place a pantry and inspect its gold coverage preview before clicking.
 5. Remove a road that serves homes or businesses, observe the access warnings and lost business activity, then reconnect it. Disconnect the plant and check that the amber outage badges appear and zones stop growing; restore power.
-6. Expand toward the pond and woods. Note whether their rules are clear before placing.
-7. Build enough services to run short of volunteers. Press `V` and watch coverage change.
-8. Host a gathering with `E` and a food drive with `F` when available. Try the camera controls and continue playing until the timer ends.
+6. Zone jobs across the main road from several homes. Watch for the traffic alert and amber road tiles. Upgrade a hotspot with `U`, then check whether the hotspot count drops and the weekly budget changes.
+7. Expand toward the pond and woods. Note whether their rules are clear before placing.
+8. Build enough services to run short of volunteers. Press `V` and watch coverage change.
+9. Host a gathering with `E` and a food drive with `F` when available. Try the camera controls and continue playing until the timer ends.
 
 ## Record
 
 - Did the game crash, freeze, or show a rendering problem? When?
 - Which building, color, or number needed explanation?
 - Was the first 10 minutes too slow, too fast, or comfortable?
-- Did zoning, power capacity, demand, taxes, funds, or volunteers create an interesting choice?
+- Did zoning, power capacity, traffic, demand, taxes, funds, or volunteers create an interesting choice?
 - What did you want to do that the game did not allow?
 
 M1 can close when the 20-minute session runs without a crash and placement, costs, and feedback make sense to a new player. Log follow-up issues in this file or the project issue tracker.
