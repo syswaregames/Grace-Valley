@@ -642,6 +642,107 @@ std::string town_advice(const grace::World& world) {
     return "Watch the demand bars, then inspect chapel and pantry coverage with tools 5 and 6.";
 }
 
+struct MapTooltip {
+    std::string title;
+    std::array<std::string, 3> details{};
+    int detail_count = 0;
+};
+
+MapTooltip map_tooltip(const grace::World& world, int x, int y) {
+    const auto tile = world.tile(x, y);
+    const auto state = world.snapshot();
+    MapTooltip tip;
+    tip.title = grace::World::name(tile);
+    auto add = [&](std::string line) {
+        if (tip.detail_count < static_cast<int>(tip.details.size()))
+            tip.details[tip.detail_count++] = std::move(line);
+    };
+    switch (tile) {
+    case grace::Tile::home: {
+        const auto needs = world.household_needs(x, y);
+        add("Belonging " + std::to_string(needs.belonging) +
+            "   Care " + std::to_string(needs.care));
+        add(std::string("Power ") + (world.is_powered(x, y) ? "connected" : "unpowered") +
+            (world.is_connected(x, y) ? " | Road connected" : " | Road isolated"));
+        add(std::string("Chapel ") + (world.home_has_service(x, y, grace::Tile::chapel)
+            ? "yes" : "no") + " | Pantry " +
+            (world.home_has_service(x, y, grace::Tile::pantry) ? "yes" : "no") +
+            (world.is_noise_polluted(x, y) ? " | Noise" : ""));
+        break;
+    }
+    case grace::Tile::road: {
+        const int condition = world.road_condition(x, y);
+        add("Traffic " + std::to_string(world.traffic_at(x, y)) + "/" +
+            std::to_string(world.road_capacity(x, y)) + " | Condition " +
+            std::to_string(condition) + "%");
+        add(std::string(condition < 30 ? "Severely damaged" : condition < 60
+            ? "Damaged; maintenance recommended" : "Maintained") +
+            (world.terrain(x, y) == grace::Terrain::water ? " | Bridge" : ""));
+        add(std::string(grace::World::road_level_name(world.road_level(x, y))) +
+            (world.next_road_upgrade_cost(x, y) > 0
+                ? " | Upgrade " + std::to_string(world.next_road_upgrade_cost(x, y))
+                : " | Max level"));
+        break;
+    }
+    case grace::Tile::residential_zone:
+    case grace::Tile::commercial_zone:
+    case grace::Tile::industrial_zone: {
+        const int demand = tile == grace::Tile::residential_zone
+            ? state.residential_demand : tile == grace::Tile::commercial_zone
+                ? state.commercial_demand : state.industrial_demand;
+        add("Demand " + std::to_string(demand) + "/100");
+        add(std::string("Road ") + (world.is_connected(x, y)
+            ? "connected" : "not connected") + " | Power " +
+            (world.is_powered(x, y) ? "available" : "unavailable"));
+        add(demand >= 25 ? "Can grow when weekly simulation runs" :
+                           "Waiting for demand to reach 25");
+        break;
+    }
+    case grace::Tile::commercial:
+        add("4 jobs | Tax " + std::to_string(state.tax_policy == grace::TaxPolicy::high
+            ? 9 : state.tax_policy == grace::TaxPolicy::low ? 3 : 6) + "/week");
+        add(world.is_powered(x, y) ? "Powered and operating" : "Unpowered; no jobs or tax");
+        add("Connected road: " + std::string(world.is_connected(x, y) ? "yes" : "no"));
+        break;
+    case grace::Tile::industrial:
+        add("6 jobs | Tax " + std::to_string(state.tax_policy == grace::TaxPolicy::high
+            ? 14 : state.tax_policy == grace::TaxPolicy::low ? 5 : 9) + "/week");
+        add(world.is_powered(x, y) ? "Powered and operating" : "Unpowered; no jobs or tax");
+        add("Workshop noise can affect nearby homes");
+        break;
+    case grace::Tile::chapel:
+    case grace::Tile::pantry:
+        add(world.is_active_service(x, y) ? "Staffed and serving" : "Needs volunteers");
+        add("Serving " + std::to_string(world.homes_with_service(tile)) + " homes");
+        add("Volunteers used " + std::to_string(state.volunteers_used) + "/" +
+            std::to_string(state.volunteers_available));
+        break;
+    case grace::Tile::park:
+        add(world.is_connected(x, y) ? "Connected public green space" : "Road access needed");
+        add("Improves nearby wellbeing and housing demand");
+        break;
+    case grace::Tile::power_plant:
+        add("Supply " + std::to_string(state.power_capacity) +
+            " | Building demand " + std::to_string(state.power_demand));
+        add(world.is_connected(x, y) ? "Connected to road power grid" : "Disconnected from grid");
+        add("Upkeep 6 funds/week");
+        break;
+    case grace::Tile::abandoned_home:
+    case grace::Tile::abandoned_commercial:
+    case grace::Tile::abandoned_industrial:
+        add("No housing capacity, jobs, or tax income");
+        add("City Score above 45 for three weeks to reopen");
+        add("Right click to clear this property");
+        break;
+    default:
+        add(world.terrain(x, y) == grace::Terrain::woods ? "Woodland" :
+            world.terrain(x, y) == grace::Terrain::water ? "Water" : "Open land");
+        add("Select a toolbar item to build or zone here");
+        break;
+    }
+    return tip;
+}
+
 const char* giving_name(grace::GivingPolicy policy) {
     switch (policy) {
     case grace::GivingPolicy::gentle: return "GENTLE";
@@ -1651,6 +1752,38 @@ int main(int argc, char** argv) {
                 SDL_RenderRect(renderer, &rect);
         }
         SDL_SetRenderClipRect(renderer, nullptr);
+        if (over_tile && !budget_open && !options_open && !state.bankrupt) {
+            const MapTooltip tip = map_tooltip(world, hover_x, hover_y);
+            std::size_t longest = tip.title.size();
+            for (int line = 0; line < tip.detail_count; ++line)
+                longest = std::max(longest, tip.details[line].size());
+            const float width = static_cast<float>(std::min<std::size_t>(
+                longest * 8 + 20, static_cast<std::size_t>(map_width - 20)));
+            const float height = static_cast<float>(18 + (tip.detail_count + 1) * 16);
+            float tooltip_x = mx + 18;
+            float tooltip_y = my + 18;
+            if (tooltip_x + width > margin + map_width - 6)
+                tooltip_x = mx - width - 18;
+            if (tooltip_y + height > header + map_height - 6)
+                tooltip_y = my - height - 18;
+            tooltip_x = std::clamp(tooltip_x, static_cast<float>(margin + 6),
+                                   static_cast<float>(margin + map_width - 6) - width);
+            tooltip_y = std::clamp(tooltip_y, static_cast<float>(header + 6),
+                                   static_cast<float>(header + map_height - 6) - height);
+            fill(renderer, {tooltip_x + 3, tooltip_y + 4, width, height}, {14, 23, 23});
+            fill(renderer, {tooltip_x, tooltip_y, width, height}, {31, 48, 47});
+            SDL_SetRenderDrawColor(renderer, 202, 169, 104, 255);
+            const SDL_FRect tooltip_outline{tooltip_x, tooltip_y, width, height};
+            SDL_RenderRect(renderer, &tooltip_outline);
+            fill(renderer, {tooltip_x + 1, tooltip_y + 1, width - 2, 17}, {91, 75, 48});
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugText(renderer, static_cast<int>(tooltip_x + 9),
+                static_cast<int>(tooltip_y + 5), tip.title.c_str());
+            for (int line = 0; line < tip.detail_count; ++line)
+                SDL_RenderDebugText(renderer, static_cast<int>(tooltip_x + 9),
+                    static_cast<int>(tooltip_y + 22 + line * 16),
+                    tip.details[line].c_str());
+        }
         fill(renderer, {static_cast<float>(sidebar_x), static_cast<float>(header),
                         sidebar_width, map_height}, {29, 45, 46});
         fill(renderer, {static_cast<float>(sidebar_x), static_cast<float>(header),
