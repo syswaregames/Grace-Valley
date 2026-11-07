@@ -271,20 +271,20 @@ void draw_power_report(SDL_Renderer* renderer, const grace::World& world) {
     SDL_RenderDebugText(renderer, 518, 179, "SHORTFALL");
     SDL_RenderDebugText(renderer, 715, 179, "SURPLUS");
     text_color(255, 239, 203);
-    SDL_RenderDebugTextFormat(renderer, 112, 211, "%d", required);
-    SDL_RenderDebugTextFormat(renderer, 315, 211, "%d", state.power_capacity);
+    SDL_RenderDebugTextFormat(renderer, 112, 211, "%d kW", required);
+    SDL_RenderDebugTextFormat(renderer, 315, 211, "%d kW", state.power_capacity);
     text_color(shortage > 0 ? 245 : 142, shortage > 0 ? 130 : 207,
                shortage > 0 ? 113 : 151);
-    SDL_RenderDebugTextFormat(renderer, 518, 211, "%d", shortage);
+    SDL_RenderDebugTextFormat(renderer, 518, 211, "%d kW", shortage);
     text_color(91, 173, 187);
-    SDL_RenderDebugTextFormat(renderer, 715, 211, "%d", surplus);
+    SDL_RenderDebugTextFormat(renderer, 715, 211, "%d kW", surplus);
 
     fill(renderer, {95, 274, 830, 220}, {36, 55, 55});
     text_color(245, 238, 211);
     SDL_RenderDebugText(renderer, 112, 292, "CAN YOUR POWER PLANTS COVER ALL ZONES?");
     text_color(180, 202, 187);
     SDL_RenderDebugTextFormat(renderer, 112, 323,
-        "REQUIRED: %d  |  COVERED: %d  |  SHORT: %d  |  SURPLUS: %d",
+        "REQUIRED: %d kW  |  COVERED: %d kW  |  SHORT: %d kW  |  SURPLUS: %d kW",
         required, covered, shortage, surplus);
     fill(renderer, {112, 355, 680, 30}, {66, 82, 83});
     const int chart_max = std::max(required, state.power_capacity);
@@ -310,10 +310,10 @@ void draw_power_report(SDL_Renderer* renderer, const grace::World& world) {
     text_color(245, 238, 211);
     SDL_RenderDebugText(renderer, 112, 525, "WHERE THE NUMBERS COME FROM");
     SDL_RenderDebugTextFormat(renderer, 112, 551,
-        "Existing buildings need %d  +  empty zones may need %d  =  %d",
+        "Buildings: %d kW  +  empty zones: %d kW  =  %d kW required",
         state.power_demand, zone_need, required);
     SDL_RenderDebugTextFormat(renderer, 112, 580,
-        "IN USE NOW: %d  |  UNUSED NOW: %d  |  SURPLUS AFTER ZONES: %d",
+        "IN USE: %d kW  |  UNUSED: %d kW  |  AFTER ZONES: %d kW",
         state.powered_demand, unused_now, surplus);
 
     fill(renderer, {95, 632, 830, 73}, {36, 55, 55});
@@ -961,7 +961,10 @@ MapTooltip map_tooltip(const grace::World& world, int x, int y) {
         const int demand = tile == grace::Tile::residential_zone
             ? state.residential_demand : tile == grace::Tile::commercial_zone
                 ? state.commercial_demand : state.industrial_demand;
-        add("Demand " + std::to_string(demand) + "/100");
+        const int power_need = tile == grace::Tile::residential_zone ? 1 :
+            tile == grace::Tile::commercial_zone ? 2 : 3;
+        add("Demand " + std::to_string(demand) + "/100 | Potential " +
+            std::to_string(power_need) + " kW");
         add(std::string("Road ") + (world.is_connected(x, y)
             ? "connected" : "not connected") + " | Power " +
             (world.is_powered(x, y) ? "available" : "unavailable"));
@@ -994,9 +997,9 @@ MapTooltip map_tooltip(const grace::World& world, int x, int y) {
         break;
     case grace::Tile::power_plant:
         add("Supply " + std::to_string(state.power_capacity) +
-            " | Building demand " + std::to_string(state.power_demand));
+            " kW | Building demand " + std::to_string(state.power_demand) + " kW");
         add(world.is_connected(x, y) ? "Connected to road power grid" : "Disconnected from grid");
-        add("Upkeep 6 funds/week");
+        add("Plant output 12 kW | Upkeep 6 funds/week");
         break;
     case grace::Tile::abandoned_home:
     case grace::Tile::abandoned_commercial:
@@ -2717,7 +2720,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugTextFormat(renderer, 389, 510, "Road condition %d%%",
                                       state.average_road_condition);
             SDL_RenderDebugText(renderer, 669, 431, "COMMUNITY SERVICES");
-            SDL_RenderDebugTextFormat(renderer, 669, 453, "Power %d/%d  Need %d",
+            SDL_RenderDebugTextFormat(renderer, 669, 453, "Power %d/%d kW Need %d kW",
                 state.powered_demand, state.power_capacity, state.power_demand);
             SDL_RenderDebugTextFormat(renderer, 669, 472, "Outages %d  Noise homes %d",
                 state.unpowered_buildings, state.noise_affected_homes);
