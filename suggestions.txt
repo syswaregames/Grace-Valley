@@ -1,0 +1,15 @@
+what suggestions about the game?
+
+Grace Valley has the foundations of a city builder: zoning, roads, power, traffic, a budget, and community needs. I’d focus next on making those systems easier to understand and giving players more interesting ways to respond to problems.
+
+My strongest suggestions are:
+
+1. City overlays. Add buttons for power, pollution, noise, traffic, and service coverage. Each overlay could color the map so players can see where a problem starts and which neighborhoods it affects.
+2. More traffic solutions. Add walking paths and a community shuttle, alongside alternate road routes. This would give players choices beyond upgrading roads and make the existing traffic suggestions more useful.
+3. A power progression. Let players replace the noisy starter plant with cleaner options, such as solar, wind, or an upgraded plant. Each could have different construction costs, upkeep, output, and pollution.
+4. Surplus power sales. Allow a town with spare capacity to sign a contract with a neighboring community. Sales would bring income, but the player would need to retain enough power for local growth.
+5. A more useful advisor. Let the advisor explain why an issue matters and point to the affected area. For example: “These homes are near the power plant. Moving future housing farther away could improve their wellbeing.”
+6. Church and community activities. Give chapels choices such as youth programs, community meals, or volunteer outreach. These could improve belonging or care while using funds and volunteers, making the church theme part of the decisions.
+7. An annual town review. Expand the new report with changes since last year: population gained, buildings developed, average City Score, finances, and the town’s most pressing issue. A few milestones—such as serving a certain number of households—could give players goals to work toward.
+
+I’d start with city overlays, then add cleaner power choices. Both build on systems already in the game and would make the consequences of the player’s decisions much easier to see.
