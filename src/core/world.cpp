@@ -6,6 +6,7 @@
 #include <istream>
 #include <ostream>
 #include <queue>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -83,6 +84,16 @@ Terrain World::terrain(int x, int y) const {
 bool World::is_connected(int x, int y) const {
     if (!inside(x, y)) return false;
     if (tile(x, y) == Tile::road) return connected_[index(x, y)];
+    if (tile(x, y) == Tile::walking_path)
+        return has_road(x, y) || tile(x - 1, y) == Tile::walking_path ||
+            tile(x + 1, y) == Tile::walking_path || tile(x, y - 1) == Tile::walking_path ||
+            tile(x, y + 1) == Tile::walking_path || tile(x - 1, y) == Tile::home ||
+            tile(x + 1, y) == Tile::home || tile(x, y - 1) == Tile::home ||
+            tile(x, y + 1) == Tile::home || tile(x - 1, y) == Tile::commercial ||
+            tile(x + 1, y) == Tile::commercial || tile(x, y - 1) == Tile::commercial ||
+            tile(x, y + 1) == Tile::commercial || tile(x - 1, y) == Tile::industrial ||
+            tile(x + 1, y) == Tile::industrial || tile(x, y - 1) == Tile::industrial ||
+            tile(x, y + 1) == Tile::industrial;
     return tile(x, y) != Tile::meadow && has_road(x, y);
 }
 
@@ -97,6 +108,16 @@ bool World::is_noise_polluted(int x, int y) const {
 
 int World::traffic_at(int x, int y) const {
     return inside(x, y) && tile(x, y) == Tile::road ? traffic_[index(x, y)] : 0;
+}
+
+int World::walkers() const { return state_.walking_commuters; }
+
+bool World::shuttle_serves(int x, int y) const {
+    for (int sy = std::max(0, y - 5); sy <= std::min(height - 1, y + 5); ++sy)
+        for (int sx = std::max(0, x - 5); sx <= std::min(width - 1, x + 5); ++sx)
+            if (tile(sx, sy) == Tile::shuttle_stop && is_connected(sx, sy) &&
+                within_service_range(sx, sy, x, y)) return true;
+    return false;
 }
 
 int World::road_capacity(int x, int y) const {
@@ -249,6 +270,8 @@ void World::rebuild_power() {
 
 void World::rebuild_traffic() {
     std::fill(traffic_.begin(), traffic_.end(), 0);
+    state_.walking_commuters = 0;
+    state_.shuttle_commuters = 0;
     struct Job { int x; int y; int remaining; };
     std::vector<Job> jobs;
     std::vector<int> homes;
@@ -276,57 +299,91 @@ void World::rebuild_traffic() {
     }
     constexpr int dx[] = {-1, 1, 0, 0};
     constexpr int dy[] = {0, 0, -1, 1};
+    std::vector<int> walkers_by_home(homes.size(), 0);
     for (std::size_t home = 0; home < homes.size(); ++home) {
         if (residents[home] == 0) continue;
         std::array<int, width * height> distance;
-        std::array<int, width * height> parent;
         distance.fill(-1);
-        parent.fill(-1);
         std::queue<int> pending;
-        const int hx = homes[home] % width;
-        const int hy = homes[home] / width;
-        for (int direction = 0; direction < 4; ++direction) {
-            const int nx = hx + dx[direction], ny = hy + dy[direction];
-            if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
-                connected_[index(nx, ny)] && distance[index(nx, ny)] < 0) {
+        const int hx = homes[home] % width, hy = homes[home] / width;
+        for (int d = 0; d < 4; ++d) {
+            const int nx = hx + dx[d], ny = hy + dy[d];
+            if (inside(nx, ny) && tile(nx, ny) == Tile::walking_path && distance[index(nx, ny)] < 0) {
                 distance[index(nx, ny)] = 0;
                 pending.push(index(nx, ny));
             }
         }
         while (!pending.empty()) {
-            const int current = pending.front();
-            pending.pop();
-            const int x = current % width, y = current / width;
-            for (int direction = 0; direction < 4; ++direction) {
-                const int nx = x + dx[direction], ny = y + dy[direction];
-                if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
-                    connected_[index(nx, ny)] && distance[index(nx, ny)] < 0) {
+            const int current = pending.front(); pending.pop();
+            for (int d = 0; d < 4; ++d) {
+                const int nx = current % width + dx[d], ny = current / width + dy[d];
+                if (inside(nx, ny) && tile(nx, ny) == Tile::walking_path && distance[index(nx, ny)] < 0) {
                     distance[index(nx, ny)] = distance[current] + 1;
-                    parent[index(nx, ny)] = current;
                     pending.push(index(nx, ny));
                 }
             }
         }
-        for (int commuter = 0; commuter < residents[home]; ++commuter) {
-            int best_job = -1, best_road = -1, best_distance = width * height;
-            for (std::size_t j = 0; j < jobs.size(); ++j) {
-                if (jobs[j].remaining == 0) continue;
-                for (int direction = 0; direction < 4; ++direction) {
-                    const int nx = jobs[j].x + dx[direction];
-                    const int ny = jobs[j].y + dy[direction];
-                    if (inside(nx, ny) && tile(nx, ny) == Tile::road &&
-                        distance[index(nx, ny)] >= 0 &&
-                        distance[index(nx, ny)] < best_distance) {
-                        best_distance = distance[index(nx, ny)];
-                        best_job = static_cast<int>(j);
-                        best_road = index(nx, ny);
+        for (int c = 0; c < residents[home]; ++c) {
+            int best = -1, best_distance = width * height;
+            for (std::size_t j = 0; j < jobs.size(); ++j) if (jobs[j].remaining > 0)
+                for (int d = 0; d < 4; ++d) {
+                    const int nx = jobs[j].x + dx[d], ny = jobs[j].y + dy[d];
+                    if (inside(nx, ny) && tile(nx, ny) == Tile::walking_path &&
+                        distance[index(nx, ny)] >= 0 && distance[index(nx, ny)] < best_distance) {
+                        best_distance = distance[index(nx, ny)]; best = static_cast<int>(j);
                     }
                 }
+            if (best < 0) break;
+            --jobs[static_cast<std::size_t>(best)].remaining;
+            ++walkers_by_home[home]; ++state_.walking_commuters;
+        }
+    }
+    for (std::size_t home = 0; home < homes.size(); ++home) {
+        const int drivers = residents[home] - walkers_by_home[home];
+        if (drivers <= 0) continue;
+        std::array<int, width * height> distance, parent;
+        distance.fill(-1); parent.fill(-1);
+        using Node = std::pair<int, int>;
+        std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pending;
+        const int hx = homes[home] % width, hy = homes[home] / width;
+        for (int d = 0; d < 4; ++d) {
+            const int nx = hx + dx[d], ny = hy + dy[d];
+            if (inside(nx, ny) && tile(nx, ny) == Tile::road && connected_[index(nx, ny)] && distance[index(nx, ny)] < 0) {
+                distance[index(nx, ny)] = 0; pending.push({0, index(nx, ny)});
             }
+        }
+        while (!pending.empty()) {
+            const auto [cost_so_far, current] = pending.top(); pending.pop();
+            if (cost_so_far != distance[current]) continue;
+            for (int d = 0; d < 4; ++d) {
+                const int nx = current % width + dx[d], ny = current / width + dy[d];
+                if (!inside(nx, ny) || tile(nx, ny) != Tile::road || !connected_[index(nx, ny)]) continue;
+                const int road = index(nx, ny), capacity = std::max(1, road_capacity(nx, ny));
+                const int candidate = cost_so_far + 100 + traffic_[static_cast<std::size_t>(road)] * 100 / capacity;
+                if (distance[road] < 0 || candidate < distance[road]) {
+                    distance[road] = candidate; parent[road] = current; pending.push({candidate, road});
+                }
+            }
+        }
+        for (int c = 0; c < drivers; ++c) {
+            int best_job = -1, best_road = -1, best_distance = width * height * 1000;
+            for (std::size_t j = 0; j < jobs.size(); ++j) if (jobs[j].remaining > 0)
+                for (int d = 0; d < 4; ++d) {
+                    const int nx = jobs[j].x + dx[d], ny = jobs[j].y + dy[d];
+                    if (inside(nx, ny) && tile(nx, ny) == Tile::road && distance[index(nx, ny)] >= 0 &&
+                        distance[index(nx, ny)] < best_distance) {
+                        best_distance = distance[index(nx, ny)]; best_job = static_cast<int>(j); best_road = index(nx, ny);
+                    }
+                }
             if (best_job < 0) break;
             --jobs[static_cast<std::size_t>(best_job)].remaining;
-            for (int road = best_road; road >= 0; road = parent[road])
-                ++traffic_[static_cast<std::size_t>(road)];
+            const int job_x = jobs[static_cast<std::size_t>(best_job)].x;
+            const int job_y = jobs[static_cast<std::size_t>(best_job)].y;
+            if (c % 2 == 0 && shuttle_serves(hx, hy) && shuttle_serves(job_x, job_y)) {
+                ++state_.shuttle_commuters;
+                continue;
+            }
+            for (int road = best_road; road >= 0; road = parent[road]) ++traffic_[static_cast<std::size_t>(road)];
         }
     }
 }
@@ -404,6 +461,8 @@ int World::cost(Tile type) {
     case Tile::power_plant: return 40;
     case Tile::solar_plant: return 100;
     case Tile::wind_plant: return 75;
+    case Tile::walking_path: return 3;
+    case Tile::shuttle_stop: return 70;
     default: return 0;
     }
 }
@@ -447,6 +506,8 @@ const char* World::name(Tile type) {
     case Tile::power_plant: return "Power plant";
     case Tile::solar_plant: return "Solar plant";
     case Tile::wind_plant: return "Wind turbine";
+    case Tile::walking_path: return "Walking path";
+    case Tile::shuttle_stop: return "Community shuttle stop";
     case Tile::abandoned_home: return "Abandoned home";
     case Tile::abandoned_commercial: return "Abandoned shop";
     case Tile::abandoned_industrial: return "Abandoned workshop";
@@ -496,7 +557,19 @@ PlacementError World::placement_error(int x, int y, Tile type) const {
     if (state_.treasury < cost_at(x, y, type)) return PlacementError::insufficient_funds;
     const bool zone = type == Tile::residential_zone ||
                       type == Tile::commercial_zone || type == Tile::industrial_zone;
-    if (!zone && (type == Tile::road ? !has_adjacent_road(x, y) : !has_road(x, y)))
+    if (type == Tile::walking_path) {
+        bool linked = has_adjacent_road(x, y);
+        constexpr int dx[] = {-1, 1, 0, 0};
+        constexpr int dy[] = {0, 0, -1, 1};
+        for (int d = 0; d < 4; ++d) {
+            const Tile adjacent = tile(x + dx[d], y + dy[d]);
+            linked |= adjacent == Tile::walking_path || adjacent == Tile::home ||
+                adjacent == Tile::commercial || adjacent == Tile::industrial;
+        }
+        if (!linked) return PlacementError::needs_connection;
+    }
+    if (!zone && type != Tile::walking_path &&
+        (type == Tile::road ? !has_adjacent_road(x, y) : !has_road(x, y)))
         return type == Tile::road ? PlacementError::needs_connection : PlacementError::needs_road;
     return PlacementError::none;
 }
@@ -576,6 +649,7 @@ Snapshot World::evaluate() const {
     int park_exposure = 0;
     int homes = 0;
     int roads = 0;
+    int paths = 0;
     int bridges = 0;
     int all_shops = 0;
     int all_workshops = 0;
@@ -599,6 +673,7 @@ Snapshot World::evaluate() const {
                 if (traffic_[index(x, y)] > road_capacity(x, y))
                     ++next.congested_roads;
                 break;
+            case Tile::walking_path: ++paths; break;
             case Tile::home:
                 ++homes;
                 if (is_noise_polluted(x, y)) ++next.noise_affected_homes;
@@ -645,6 +720,7 @@ Snapshot World::evaluate() const {
                 power_building_upkeep += power_upkeep(tile(x, y));
                 if (powered_[index(x, y)]) next.power_capacity += power_output(tile(x, y));
                 break;
+            case Tile::shuttle_stop: ++next.shuttle_stops; break;
             default: break;
             }
         }
@@ -660,12 +736,13 @@ Snapshot World::evaluate() const {
             ? next.shops * 9 + next.workshops * 14 :
               next.shops * 6 + next.workshops * 9;
     next.weekly_income = next.grant_income + next.giving_income + next.tax_income;
-    const int road_base_upkeep = (roads + 2) / 3 + bridges + road_upgrade_upkeep;
+    const int road_base_upkeep = (roads + 2) / 3 + bridges + road_upgrade_upkeep +
+        (paths + 3) / 4;
     next.road_upkeep = next.road_budget == RoadBudget::lean
         ? (road_base_upkeep + 1) / 2 : next.road_budget == RoadBudget::generous
             ? road_base_upkeep * 2 : road_base_upkeep;
     next.average_road_condition = roads == 0 ? 100 : total_road_condition / roads;
-    next.building_upkeep = homes +
+    next.building_upkeep = homes + next.shuttle_stops * 4 +
                            all_shops * 2 + all_workshops * 3 +
                            next.abandoned_buildings;
     next.building_upkeep += power_building_upkeep;
@@ -917,7 +994,7 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 7\n";
+    output << "GRACE_VALLEY_WORLD 8\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
@@ -949,7 +1026,7 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version < 1 || version > 7))
+        (version < 1 || version > 8))
         return std::nullopt;
     World result;
     int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
@@ -1024,7 +1101,8 @@ std::optional<World> World::load(std::istream& input) {
             if (!(input >> tile >> terrain >> upgraded) ||
                 (version >= 3 && !(input >> condition)) ||
                 !(input >> belonging >> care) ||
-                tile < 0 || tile > static_cast<int>(version >= 7 ? Tile::wind_plant : Tile::abandoned_industrial) ||
+                tile < 0 || tile > static_cast<int>(version >= 8 ? Tile::shuttle_stop :
+                    version >= 7 ? Tile::wind_plant : Tile::abandoned_industrial) ||
                 terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
                 upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
                 condition < 0 || condition > 100 ||

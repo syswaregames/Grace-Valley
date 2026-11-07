@@ -388,6 +388,8 @@ const char* tool_label(grace::Tile type) {
     case grace::Tile::power_plant: return "POWER";
     case grace::Tile::solar_plant: return "SOLAR";
     case grace::Tile::wind_plant: return "WIND";
+    case grace::Tile::walking_path: return "PATH";
+    case grace::Tile::shuttle_stop: return "SHUTTLE";
     default: return "TOOL";
     }
 }
@@ -463,6 +465,19 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
         shape(16, 1, 3, 13, {230, 230, 217});
         shape(18, 12, 13, 3, {230, 230, 217});
         shape(4, 15, 13, 3, {230, 230, 217});
+        break;
+    case grace::Tile::walking_path:
+        shape(0, 11, 40, 18, {177, 151, 113});
+        shape(0, 14, 40, 12, {222, 204, 161});
+        shape(5, 17, 4, 3, {150, 135, 104});
+        shape(25, 21, 5, 3, {150, 135, 104});
+        break;
+    case grace::Tile::shuttle_stop:
+        shape(8, 12, 24, 23, {70, 119, 140});
+        shape(11, 16, 18, 10, {177, 222, 225});
+        shape(14, 19, 5, 5, {42, 73, 78});
+        shape(22, 19, 5, 5, {42, 73, 78});
+        shape(17, 7, 6, 8, {238, 216, 156});
         break;
     default: break;
     }
@@ -883,6 +898,19 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(8, 15, 11, 3, {239, 239, 224});
         shape(17, 12, 6, 6, {111, 143, 151});
         break;
+    case grace::Tile::walking_path:
+        shape(0, 10, 40, 20, {157, 132, 96});
+        shape(0, 13, 40, 14, {224, 204, 158});
+        shape(5, 17, 5, 3, {157, 140, 107});
+        shape(27, 21, 5, 3, {157, 140, 107});
+        break;
+    case grace::Tile::shuttle_stop:
+        shape(7, 13, 26, 22, {73, 120, 139});
+        shape(10, 17, 20, 10, {184, 225, 226});
+        shape(13, 20, 6, 5, {46, 76, 80});
+        shape(22, 20, 6, 5, {46, 76, 80});
+        shape(17, 7, 6, 9, {238, 216, 156});
+        break;
     default: break;
     }
     const bool pending_zone = type == grace::Tile::residential_zone ||
@@ -975,6 +1003,10 @@ std::optional<TrafficTip> traffic_tip(const grace::World& world) {
         worst->action = "Fund road care in Budget to restore this road's capacity.";
         return worst;
     }
+    if (world.walkers() > 0 || world.snapshot().shuttle_commuters > 0)
+        worst->action = "Expand walking paths or shuttle coverage, then connect a parallel road route.";
+    else
+        worst->action = "Build a parallel route, connect walking paths, or place shuttle stops near homes and jobs.";
     bool near_homes = false;
     bool near_jobs = false;
     bool near_industry = false;
@@ -990,9 +1022,9 @@ std::optional<TrafficTip> traffic_tip(const grace::World& world) {
         }
     }
     if (near_homes && near_jobs)
-        worst->action = "Connect a second route between nearby homes and jobs.";
+        worst->action = "Connect a second route, add a walking path, or serve both ends with a shuttle.";
     else if (near_industry)
-        worst->action = "Build a parallel route around the workshop district.";
+        worst->action = "Add a parallel route around workshops, or connect paths and shuttle coverage.";
     return worst;
 }
 
@@ -1168,6 +1200,15 @@ MapTooltip map_tooltip(const grace::World& world, int x, int y) {
                 : " | Max level"));
         break;
     }
+    case grace::Tile::walking_path:
+        add("Connect this path to a home and a workplace to replace car trips");
+        add("Path upkeep is included in Road Care");
+        break;
+    case grace::Tile::shuttle_stop:
+        add("Serves homes and jobs within 5 tiles when road connected");
+        add(std::to_string(state.shuttle_commuters) + " commuters riding the shuttle");
+        add("Upkeep 4 funds/week");
+        break;
     case grace::Tile::residential_zone:
     case grace::Tile::commercial_zone:
     case grace::Tile::industrial_zone: {
@@ -1713,10 +1754,11 @@ int main(int argc, char** argv) {
                     std::abs(restored_camera.offset_x) < 100000.0f &&
                     std::abs(restored_camera.offset_y) < 100000.0f;
                 valid = valid && saved_tool >= 0 &&
-                    saved_tool <= static_cast<int>(grace::Tile::wind_plant);
+                    saved_tool <= static_cast<int>(grace::Tile::shuttle_stop);
                 const auto tool = static_cast<grace::Tile>(saved_tool);
                 valid = valid && (std::find(tools.begin(), tools.end(), tool) != tools.end() ||
-                    tool == grace::Tile::solar_plant || tool == grace::Tile::wind_plant) &&
+                    tool == grace::Tile::solar_plant || tool == grace::Tile::wind_plant ||
+                    tool == grace::Tile::walking_path || tool == grace::Tile::shuttle_stop) &&
                     (!saved_upgrade || tool == grace::Tile::road);
                 auto restored = valid ? grace::World::load(input) : std::nullopt;
                 if (restored) {
@@ -2126,7 +2168,8 @@ int main(int argc, char** argv) {
                 }
             }
             if (event.type == SDL_EVENT_MOUSE_MOTION && painting_tiles &&
-                !bulldozer_mode && (selected == grace::Tile::road || is_zone(selected))) {
+                !bulldozer_mode && (selected == grace::Tile::road ||
+                    selected == grace::Tile::walking_path || is_zone(selected))) {
                 float mx = event.motion.x, my = event.motion.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
                 int x, y;
@@ -2141,6 +2184,8 @@ int main(int argc, char** argv) {
                                         (result.bridges > 0 ?
                                             " road tiles including bridges built for " :
                                             " road tiles built for ") :
+                                    selected == grace::Tile::walking_path ?
+                                        " walking path tiles built for " :
                                         " zone tiles marked for ") +
                                    std::to_string(before - world.snapshot().treasury) + " funds.";
                         feedback_until = SDL_GetTicks() + 2500;
@@ -2292,10 +2337,11 @@ int main(int argc, char** argv) {
                                 power_menu_open = false;
                                 overlay_menu_open = false;
                             } else if (power_menu_open) {
-                                constexpr std::array<grace::Tile, 3> sources{
+                                constexpr std::array<grace::Tile, 5> sources{
                                     grace::Tile::power_plant, grace::Tile::solar_plant,
-                                    grace::Tile::wind_plant};
-                                for (int row = 0; row < 3; ++row)
+                                    grace::Tile::wind_plant, grace::Tile::walking_path,
+                                    grace::Tile::shuttle_stop};
+                                for (int row = 0; row < static_cast<int>(sources.size()); ++row)
                                     if (contains(option_button(row), mx, my)) {
                                         selected = sources[static_cast<std::size_t>(row)];
                                         power_menu_open = false;
@@ -2304,9 +2350,13 @@ int main(int argc, char** argv) {
                                         upgrade_mode = false;
                                         painting_tiles = false;
                                         feedback = std::string(grace::World::name(selected)) +
-                                            ": " + std::to_string(grace::World::power_output(selected)) +
-                                            " kW, " + std::to_string(grace::World::cost(selected)) +
-                                            " funds, " + std::to_string(grace::World::power_upkeep(selected)) + "/week.";
+                                            " selected. Build cost " + std::to_string(grace::World::cost(selected)) +
+                                            " funds. " + (selected == grace::Tile::walking_path
+                                                ? "Connect a home and a job to replace car trips."
+                                                : selected == grace::Tile::shuttle_stop
+                                                    ? "Place by a road; it carries half of nearby commutes."
+                                                    : std::to_string(grace::World::power_output(selected)) +
+                                                        " kW, upkeep " + std::to_string(grace::World::power_upkeep(selected)) + "/week.");
                                         feedback_until = SDL_GetTicks() + 5000;
                                         break;
                                     }
@@ -2446,18 +2496,20 @@ int main(int argc, char** argv) {
                             continue;
                         }
                         const auto error = world.placement_error(x, y, selected);
-                        if ((selected == grace::Tile::road || is_zone(selected)) &&
+                        if ((selected == grace::Tile::road || selected == grace::Tile::walking_path || is_zone(selected)) &&
                             world.tile(x, y) == selected) {
                             painting_tiles = true;
                             paint_x = x;
                             paint_y = y;
                             feedback = selected == grace::Tile::road
                                 ? "Hold and drag to extend this road."
+                                : selected == grace::Tile::walking_path
+                                    ? "Hold and drag to connect a walking route."
                                 : "Hold and drag to extend this zone.";
                         } else if (error == grace::PlacementError::none) {
                             const int price = world.cost_at(x, y, selected);
                             world.place(x, y, selected);
-                            if (selected == grace::Tile::road || is_zone(selected)) {
+                            if (selected == grace::Tile::road || selected == grace::Tile::walking_path || is_zone(selected)) {
                                 painting_tiles = true;
                                 paint_x = x;
                                 paint_y = y;
@@ -2693,7 +2745,7 @@ int main(int argc, char** argv) {
             hover_started = now;
         }
         const bool stroke_start = over_tile && !hand_mode && !upgrade_mode &&
-            !bulldozer_mode && (selected == grace::Tile::road || is_zone(selected)) &&
+            !bulldozer_mode && (selected == grace::Tile::road || selected == grace::Tile::walking_path || is_zone(selected)) &&
             world.tile(hover_x, hover_y) == selected;
         const bool service_view = !hand_mode &&
             (selected == grace::Tile::chapel || selected == grace::Tile::pantry);
@@ -2783,21 +2835,21 @@ int main(int argc, char** argv) {
         SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
         if (power_menu_open || overlay_menu_open) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 112,
-                power_menu_open ? "POWER SOURCES" : "MAP VIEWS");
+                power_menu_open ? "BUILD & MOBILITY" : "MAP VIEWS");
             const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
             draw_button(renderer, back, "BACK TO TOOLS");
             if (power_menu_open) {
-                constexpr std::array<const char*, 3> labels{"FUEL   40F", "SOLAR 100F", "WIND   75F"};
-                for (int row = 0; row < 3; ++row)
+                constexpr std::array<const char*, 5> labels{
+                    "FUEL   40F", "SOLAR 100F", "WIND   75F", "WALK PATH 3F", "SHUTTLE 70F"};
+                for (int row = 0; row < static_cast<int>(labels.size()); ++row)
                     draw_button(renderer, option_button(row), labels[static_cast<std::size_t>(row)]);
                 SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 355, "FUEL: 12KW  6/WK");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 375, "NOISE + POLLUTION");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 405, "SOLAR: 8KW  2/WK");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 425, "CLEAN, STEADY");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 455, "WIND: 6KW  3/WK");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 475, "CLEAN, STEADY");
-                SDL_RenderDebugText(renderer, sidebar_x + 12, 515, "NEEDS ROAD ACCESS");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 442, "FUEL 12KW  |  SOLAR 8KW  |  WIND 6KW");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 468, "RENEWABLES: LOW UPKEEP, NO SMOKE");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 502, "PATHS CONNECT HOMES TO JOBS");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 526, "WALKING REPLACES CAR TRIPS");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 560, "SHUTTLE SERVES BOTH ENDS");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 584, "SEE TRAFFIC OVERLAY FOR RESULTS");
             } else {
                 constexpr std::array<const char*, 6> labels{
                     "NONE", "POWER", "TRAFFIC", "POLLUTION", "NOISE", "SERVICES"};
@@ -2873,7 +2925,7 @@ int main(int argc, char** argv) {
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 16, 581, "CLICK REPORTS  |  I");
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
-            draw_button(renderer, power_menu_button, "POWER SOURCES");
+            draw_button(renderer, power_menu_button, "BUILD / MOBILITY");
             draw_button(renderer, overlay_menu_button, "MAP VIEWS", map_overlay != MapOverlay::none);
         }
         if (budget_open) draw_budget_panel(renderer, state);
@@ -3131,6 +3183,8 @@ int main(int argc, char** argv) {
                                       state.congested_roads, state.bad_roads);
             SDL_RenderDebugTextFormat(renderer, 389, 510, "Road condition %d%%",
                                       state.average_road_condition);
+            SDL_RenderDebugTextFormat(renderer, 389, 529, "Walk %d  |  Shuttle %d",
+                                      state.walking_commuters, state.shuttle_commuters);
             SDL_RenderDebugText(renderer, 669, 431, "COMMUNITY SERVICES");
             SDL_RenderDebugTextFormat(renderer, 669, 453, "Power %d/%d kW Need %d kW",
                 state.powered_demand, state.power_capacity, state.power_demand);

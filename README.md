@@ -81,7 +81,7 @@ Click **Upgrade Road** in the sidebar or press `U`, then click a road tile to ad
 | Boulevard | 24 | 35 from Avenue | 3 |
 | Arterial | 36 | 55 from Boulevard | 6 |
 
-The usual road network upkeep also applies. A busy corridor may need several upgraded tiles. Right clicking removes a road and all its upgrades. Commuters currently choose a shortest road route, so parallel streets may need later route-choice tuning.
+The usual road network upkeep also applies. A busy corridor may need several upgraded tiles. Commuters compare connected road routes using current congestion and road capacity, so a parallel street can draw trips away from a jam. Use **Build / Mobility** in the sidebar for alternatives: **Walking Path** costs 3 funds per tile and connects directly between homes and workplaces. Drag to lay a continuous route; commuters who can walk the whole way leave car traffic. Path upkeep is included with road maintenance. A **Community Shuttle Stop** costs 70 funds and 4 per week to operate. Place it beside a connected road; it carries about half of the car commutes when both the home and workplace are within five tiles. Check the **Traffic** map view and the **Reports → Issues** advice to see where these choices can help.
 
 ### Zoning and demand
 

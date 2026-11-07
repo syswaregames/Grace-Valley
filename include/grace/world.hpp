@@ -11,7 +11,7 @@ enum class Tile : std::uint8_t {
     meadow, road, home, chapel, pantry, park,
     residential_zone, commercial_zone, industrial_zone, commercial, industrial,
     power_plant, abandoned_home, abandoned_commercial, abandoned_industrial,
-    solar_plant, wind_plant
+    solar_plant, wind_plant, walking_path, shuttle_stop
 };
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
@@ -90,6 +90,9 @@ struct Snapshot {
     int abandoned_buildings = 0;
     int low_score_weeks = 0;
     int peak_traffic = 0;
+    int walking_commuters = 0;
+    int shuttle_commuters = 0;
+    int shuttle_stops = 0;
     int events_hosted = 0;
     int event_weeks_left = 0;
     int event_cooldown = 0;
@@ -119,6 +122,8 @@ public:
     int road_capacity(int x, int y) const;
     int road_level(int x, int y) const;
     int road_condition(int x, int y) const;
+    int walkers() const;
+    bool shuttle_serves(int x, int y) const;
     int bad_road_count() const;
     int next_road_upgrade_cost(int x, int y) const;
     static const char* road_level_name(int level);
