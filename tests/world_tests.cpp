@@ -335,6 +335,20 @@ int main() {
     business.set_tax_policy(grace::TaxPolicy::high);
     assert(business.snapshot().tax_income > normal_tax.tax_income);
     assert(business.snapshot().industrial_demand < low_tax.industrial_demand);
+    grace::World near_plant;
+    grace::World distant_plant;
+    assert(near_plant.place(11, 9, grace::Tile::power_plant));
+    assert(distant_plant.place(15, 9, grace::Tile::power_plant));
+    assert(near_plant.is_noise_polluted(10, 7));
+    assert(!distant_plant.is_noise_polluted(10, 7));
+    assert(near_plant.snapshot().noise_affected_homes > 0);
+    near_plant.advance_week();
+    distant_plant.advance_week();
+    assert(near_plant.household_needs(10, 7).care <
+           distant_plant.household_needs(10, 7).care);
+    assert(near_plant.snapshot().city_score < distant_plant.snapshot().city_score);
+    assert(near_plant.remove(11, 9));
+    assert(!near_plant.is_noise_polluted(10, 7));
     grace::World noisy_town;
     grace::World quiet_town;
     assert(noisy_town.place(11, 9, grace::Tile::power_plant));

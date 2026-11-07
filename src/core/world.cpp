@@ -93,7 +93,7 @@ bool World::is_powered(int x, int y) const {
 
 bool World::is_noise_polluted(int x, int y) const {
     return inside(x, y) && tile(x, y) == Tile::home &&
-           near(x, y, Tile::industrial, 4);
+           (near(x, y, Tile::industrial, 4) || near(x, y, Tile::power_plant, 4));
 }
 
 int World::traffic_at(int x, int y) const {
@@ -370,8 +370,10 @@ void World::update_households() {
             const int park = connected && near(x, y, Tile::park, 4)
                 ? (state_.service_budget == ServiceBudget::lean ? 1 :
                    state_.service_budget == ServiceBudget::generous ? 3 : 2) : 0;
-            const int pollution = connected && near(x, y, Tile::industrial, 4) ? 6 : 0;
-            const int noise = connected && near(x, y, Tile::industrial, 4) ? 3 : 0;
+            const bool workshop = connected && near(x, y, Tile::industrial, 4);
+            const bool plant = connected && near(x, y, Tile::power_plant, 4);
+            const int pollution = (workshop ? 6 : 0) + (plant ? 6 : 0);
+            const int noise = (workshop ? 3 : 0) + (plant ? 3 : 0);
             const bool gathering = state_.event_weeks_left > 0 &&
                                    state_.event_kind == EventKind::gathering;
             const bool food_drive = state_.event_weeks_left > 0 &&

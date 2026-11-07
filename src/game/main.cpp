@@ -867,7 +867,7 @@ std::string town_advice(const grace::World& world) {
     if (state.noise_affected_homes > 0)
         return "Noise alert: workshops affect " +
             std::to_string(state.noise_affected_homes) +
-            " homes. Move housing or industry farther apart.";
+            " homes. Move housing away from workshops and power plants.";
     if (state.bad_roads > 0)
         return "Roads are deteriorating. Open Budget (B) and restore road maintenance funding.";
     int homes = 0;
@@ -999,7 +999,7 @@ MapTooltip map_tooltip(const grace::World& world, int x, int y) {
         add("Supply " + std::to_string(state.power_capacity) +
             " kW | Building demand " + std::to_string(state.power_demand) + " kW");
         add(world.is_connected(x, y) ? "Connected to road power grid" : "Disconnected from grid");
-        add("Plant output 12 kW | Upkeep 6 funds/week");
+        add("12 kW | Noise and pollution affect nearby homes");
         break;
     case grace::Tile::abandoned_home:
     case grace::Tile::abandoned_commercial:
@@ -1617,8 +1617,18 @@ int main(int argc, char** argv) {
             event.button.y = header + (y + 0.5f) * base_cell;
             SDL_PushEvent(&event);
         };
-        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT, 11, 9);
-        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_RIGHT, 11, 8);
+        SDL_Event choose_bulldozer{};
+        choose_bulldozer.type = SDL_EVENT_KEY_DOWN;
+        choose_bulldozer.key.key = SDLK_9;
+        SDL_PushEvent(&choose_bulldozer);
+        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT, 11, 9);
+        click(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT, 11, 9);
+        click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT, 11, 8);
+        click(SDL_EVENT_MOUSE_BUTTON_UP, SDL_BUTTON_LEFT, 11, 8);
+        SDL_Event choose_road{};
+        choose_road.type = SDL_EVENT_KEY_DOWN;
+        choose_road.key.key = SDLK_1;
+        SDL_PushEvent(&choose_road);
         click(SDL_EVENT_MOUSE_BUTTON_DOWN, SDL_BUTTON_LEFT, 10, 8);
         SDL_Event repair_motion{};
         repair_motion.type = SDL_EVENT_MOUSE_MOTION;
@@ -2231,13 +2241,14 @@ int main(int argc, char** argv) {
             for (int x = 0; x < grace::World::width; ++x)
                 draw_tile(renderer, world, x, y, camera, car_animation_ms);
 
-        // Industry emits slow, dark smoke puffs that drift across the city.
+        // Workshops and connected power plants emit drifting smoke.
         // The effect is visual only; pollution's gameplay impact remains in World.
         for (int y = 0; y < grace::World::height; ++y) {
             for (int x = 0; x < grace::World::width; ++x) {
                 const auto source = world.tile(x, y);
                 if (source != grace::Tile::industrial &&
-                    source != grace::Tile::abandoned_industrial) continue;
+                    source != grace::Tile::abandoned_industrial &&
+                    !(source == grace::Tile::power_plant && world.is_powered(x, y))) continue;
                 const auto building = camera.tile_rect(x, y);
                 const float phase = static_cast<float>(now) * 0.000035f +
                     static_cast<float>((x * 17 + y * 31) % 97) * 0.09f;
@@ -2532,7 +2543,7 @@ int main(int argc, char** argv) {
             if (world.is_connected(hover_x, hover_y) &&
                 !world.is_powered(hover_x, hover_y)) hint += " No power!";
             if (world.is_noise_polluted(hover_x, hover_y))
-                hint += " Noise from nearby workshops lowers care and City Score.";
+                hint += " Noise and pollution from nearby workshops or plants lower wellbeing.";
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);

@@ -137,6 +137,15 @@ int main() {
         if (week % 9 == 0) build_first(grace::Tile::road);
     }
     report("overbuilt long run", expanding);
+    if (expanding.snapshot().bankrupt) return 9;
+    // The pollution rules can limit growth before demand exceeds supply.
+    // Remove plants until the same town experiences a power shortage.
+    for (int y = 0; y < grace::World::height &&
+         expanding.snapshot().power_demand <= expanding.snapshot().power_capacity; ++y)
+        for (int x = 0; x < grace::World::width &&
+             expanding.snapshot().power_demand <= expanding.snapshot().power_capacity; ++x)
+            if (expanding.tile(x, y) == grace::Tile::power_plant &&
+                !expanding.remove(x, y)) return 9;
     if (expanding.snapshot().bankrupt ||
         expanding.snapshot().power_demand <= expanding.snapshot().power_capacity ||
         expanding.snapshot().unpowered_buildings == 0)
