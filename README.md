@@ -30,6 +30,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Start the weekly simulation / pause or resume | Click **Play/Pause** or press `Space` |
 | Open the budget | Click **Budget** or press `B` (click a policy to select it) |
 | Get financial help | When projected cash runway falls to about three weeks, the city pauses and the advisor recommends budget changes |
+| Borrow emergency funds | Click **Borrow 200** in Budget or the advisor; one loan may be active at a time |
 | Cycle giving policy | `G` |
 | Cycle service budget | `O` |
 | Cycle business tax | `T` (low, balanced, high) |
@@ -91,6 +92,8 @@ Each home has **belonging** and **care** needs that change weekly. Staffed chape
 The top bar shows **IN**, **OUT**, and **NET** for the next week at the current town size. Press `B` for the budget breakdown and clickable policies. The founding grant is 10 per week. **Giving** can be Gentle (1 per resident), Balanced (1.5 per resident, rounded down), or Ambitious (2 per resident). Gentle giving slightly helps household wellbeing; Ambitious giving strains it. **Services** can be Lean (half service upkeep, rounded up), Balanced, or Generous (double service upkeep). Funding changes how strongly staffed chapels and pantries meet needs. **Road Maintenance** can be Lean, Balanced, or Generous. Lean halves road upkeep but roads lose 12 condition each week, reducing capacity and increasing congestion; Generous doubles upkeep and repairs 8 condition per week. Damaged roads show an exclamation mark, lower City Score, and trigger an alert. **Business tax** can be Low, Balanced, or High. Low tax encourages new shops and workshops but collects less from each; High tax collects more from existing businesses but suppresses new business demand. Homes, shops, and workshops have fixed upkeep; resident support and coordination costs grow with population. Construction and events are separate one-time expenses. If weekly cashflow takes the treasury below zero, the town is **bankrupt** and the simulation ends. The bankruptcy screen shows the final balance and weekly cashflow. Click **View Budget** to inspect expenses or **New Town** to restart; `B` and `Backspace` are shortcuts.
 
 This is an early balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios. A costly service budget can cause bankruptcy; an expanding town can also run short of power. Human playtesting will decide whether the choices and pace feel fair.
+
+The community loan provides 200 funds immediately. Every fourth week, the town pays 20 of principal plus 5% interest on the remaining balance. That payment appears in the week's expenses. Budget shows the outstanding balance and expected monthly payment; a new loan is available after repayment.
 
 ## Build in Visual Studio
 

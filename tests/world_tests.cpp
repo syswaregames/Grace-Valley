@@ -29,6 +29,22 @@ int main() {
     assert(start.weekly_upkeep == start.building_upkeep + start.road_upkeep +
                                   start.service_upkeep +
                                   start.community_upkeep);
+    grace::World borrower;
+    assert(borrower.take_loan());
+    assert(!borrower.take_loan());
+    assert(borrower.snapshot().treasury == 460);
+    assert(borrower.snapshot().loan_balance == 200);
+    assert(borrower.snapshot().monthly_loan_payment == 30);
+    std::stringstream loan_save;
+    assert(borrower.save(loan_save));
+    auto restored_loan = grace::World::load(loan_save);
+    assert(restored_loan && restored_loan->snapshot().loan_balance == 200);
+    for (int week = 0; week < 3; ++week) borrower.advance_week();
+    assert(borrower.snapshot().loan_due_this_week == 30);
+    borrower.advance_week();
+    assert(borrower.snapshot().loan_balance == 180);
+    assert(borrower.snapshot().treasury == 438);
+    assert(borrower.snapshot().monthly_loan_payment == 29);
     grace::World bridge;
     for (int x : {16, 17}) assert(bridge.place(x, 8, grace::Tile::road));
     for (int y : {7, 6, 5, 4}) assert(bridge.place(17, y, grace::Tile::road));
@@ -125,12 +141,12 @@ int main() {
         std::string magic;
         int version, week, population, treasury, care_first, bankrupt;
         int giving, services, road_budget, tax, events, event_weeks, event_kind;
-        int last_event, low_score_weeks, recovery_weeks;
+        int last_event, low_score_weeks, recovery_weeks, loan_balance;
         int saved_width, saved_height;
         source >> magic >> version >> week >> population >> treasury >> care_first >>
             bankrupt >> giving >> services >> road_budget >> tax >> events >>
             event_weeks >> event_kind >> last_event >> low_score_weeks >>
-            recovery_weeks >> saved_width >> saved_height;
+            recovery_weeks >> loan_balance >> saved_width >> saved_height;
         std::stringstream legacy;
         legacy << "GRACE_VALLEY_WORLD " << (old_map ? 2 : 1) << '\n'
                << week << ' ' << population << ' ' << treasury << ' ' << care_first

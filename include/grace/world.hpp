@@ -39,6 +39,10 @@ struct Snapshot {
     int treasury = 260;
     int weekly_income = 0;
     int weekly_upkeep = 0;
+    int loan_balance = 0;
+    int monthly_loan_payment = 0;
+    int loan_interest = 0;
+    int loan_due_this_week = 0;
     int grant_income = 0;
     int giving_income = 0;
     int tax_income = 0;
@@ -90,6 +94,7 @@ public:
     static constexpr int width = 48;
     static constexpr int height = 32;
     static constexpr int service_radius = 5;
+    static constexpr int loan_amount = 200;
 
     World();
     Tile tile(int x, int y) const;
@@ -123,6 +128,7 @@ public:
     void set_service_budget(ServiceBudget budget);
     void set_road_budget(RoadBudget budget);
     void set_tax_policy(TaxPolicy policy);
+    bool take_loan();
     EventError can_host_event(EventKind kind = EventKind::gathering) const;
     EventError host_event(EventKind kind = EventKind::gathering);
     void advance_week();

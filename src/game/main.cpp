@@ -45,8 +45,10 @@ constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
 constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
-constexpr SDL_FRect advisor_budget_button{330, 468, 250, 44};
-constexpr SDL_FRect advisor_resume_button{644, 468, 250, 44};
+constexpr SDL_FRect advisor_loan_button{282, 468, 190, 44};
+constexpr SDL_FRect advisor_budget_button{510, 468, 190, 44};
+constexpr SDL_FRect advisor_resume_button{738, 468, 190, 44};
+constexpr SDL_FRect budget_loan_button{663, 611, 202, 42};
 constexpr SDL_FRect demand_item(int index) {
     return {static_cast<float>(20 + index * 98), 72, 92, 24};
 }
@@ -142,10 +144,9 @@ void draw_button(SDL_Renderer* renderer, SDL_FRect rect, const char* label,
                         rect.y + (rect.h - 8) / 2, label);
 }
 
-void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state,
-                       bool simulation_started) {
+void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state) {
     tint(renderer, {margin, header, map_width, map_height}, {12, 20, 22}, 135);
-    const SDL_FRect panel{140, 118, 760, 520};
+    const SDL_FRect panel{140, 118, 760, 552};
     fill(renderer, panel, {29, 45, 46});
     SDL_SetRenderDrawColor(renderer, 202, 169, 104, 255);
     SDL_RenderRect(renderer, &panel);
@@ -172,9 +173,10 @@ void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state,
     SDL_RenderDebugTextFormat(renderer, 176, 217, "Grant %d + giving %d + tax %d",
         state.grant_income, state.giving_income, state.tax_income);
     SDL_RenderDebugTextFormat(renderer, 526, 217,
-        "Build %d + roads %d + svc %d + other %d",
+        "Bld %d Road %d Svc %d Misc %d Loan %d",
         state.building_upkeep, state.road_upkeep,
-        state.service_upkeep, state.community_upkeep);
+        state.service_upkeep, state.community_upkeep,
+        state.loan_due_this_week);
 
     constexpr std::array<const char*, 4> names{
         "GIVING", "SERVICES", "BUSINESS TAX", "ROAD CARE"};
@@ -220,11 +222,19 @@ void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state,
                 effects[static_cast<std::size_t>(row)][static_cast<std::size_t>(choice)]);
         }
     }
+    fill(renderer, {160, 605, 720, 54}, {43, 65, 65});
+    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+    SDL_RenderDebugText(renderer, 176, 614, "COMMUNITY LOAN");
     SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-    SDL_RenderDebugText(renderer, 160, 615,
-        state.bankrupt ? "BANKRUPT  |  BACKSPACE STARTS A NEW TOWN" :
-        !simulation_started ? "SETUP  |  CASHFLOW STARTS WHEN YOU PRESS SPACE" :
-        "Policy choices update the weekly estimate immediately.");
+    if (state.loan_balance > 0)
+        SDL_RenderDebugTextFormat(renderer, 176, 636,
+            "Owed %d  |  Monthly %d (%d interest)", state.loan_balance,
+            state.monthly_loan_payment, state.loan_interest);
+    else SDL_RenderDebugText(renderer, 176, 636,
+        "Borrow 200  |  Repay 20 + 5% interest each 4 weeks");
+    draw_button(renderer, budget_loan_button,
+        state.loan_balance > 0 ? "LOAN ACTIVE" : "BORROW 200",
+        state.loan_balance > 0);
 }
 
 enum class ToolCategory { roads, zones, civic };
@@ -746,6 +756,9 @@ std::string town_advice(const grace::World& world) {
 
 std::string financial_advice(const grace::World& world) {
     const auto state = world.snapshot();
+    if (state.loan_balance > 0 &&
+        state.weekly_income >= state.weekly_upkeep - state.loan_due_this_week)
+        return "A loan payment is near. Preserve funds and lower costs until the balance falls.";
     if (state.weekly_upkeep <= state.weekly_income)
         return "Your income currently covers weekly costs. Keep a cash reserve before expanding.";
     if (state.giving_policy == grace::GivingPolicy::ambitious)
@@ -1154,6 +1167,12 @@ int main(int argc, char** argv) {
         paused = !paused;
         feedback = paused ? "Simulation paused." : "Simulation running. Weekly cashflow has started.";
         feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto borrow_money = [&] {
+        if (world.take_loan())
+            feedback = "Loan received: 200 funds. Repay 20 plus 5% interest every four weeks.";
+        else feedback = "A loan is already active. Finish repaying it before borrowing again.";
+        feedback_until = SDL_GetTicks() + 5500;
     };
     auto cycle_giving = [&] {
         const int next = (static_cast<int>(world.snapshot().giving_policy) + 1) % 3;
@@ -1607,6 +1626,10 @@ int main(int argc, char** argv) {
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
                 if (advisor_open) {
                     if (event.button.button == SDL_BUTTON_LEFT &&
+                        contains(advisor_loan_button, mx, my)) {
+                        borrow_money();
+                        advisor_open = false;
+                    } else if (event.button.button == SDL_BUTTON_LEFT &&
                         contains(advisor_budget_button, mx, my)) {
                         advisor_open = false;
                         budget_open = true;
@@ -1657,6 +1680,10 @@ int main(int argc, char** argv) {
                 if (budget_open) {
                     if (event.button.button == SDL_BUTTON_LEFT &&
                         !world.snapshot().bankrupt) {
+                        if (contains(budget_loan_button, mx, my)) {
+                            borrow_money();
+                            continue;
+                        }
                         for (int row = 0; row < 4; ++row)
                             for (int choice = 0; choice < 3; ++choice)
                                 if (contains(budget_choice(row, choice), mx, my)) {
@@ -1828,11 +1855,21 @@ int main(int argc, char** argv) {
             last_autoplay = now;
         }
         const auto advisor_state = world.snapshot();
-        const int weekly_deficit = advisor_state.weekly_upkeep - advisor_state.weekly_income;
-        const int runway = weekly_deficit > 0
-            ? advisor_state.treasury / weekly_deficit : 99;
+        const int weekly_base_net = advisor_state.weekly_income -
+            advisor_state.weekly_upkeep + advisor_state.loan_due_this_week;
+        int projected_funds = advisor_state.treasury;
+        int warning_weeks = 0;
+        for (int offset = 0; offset < 5; ++offset) {
+            projected_funds += weekly_base_net;
+            if ((advisor_state.week + offset) % 4 == 0)
+                projected_funds -= advisor_state.monthly_loan_payment;
+            if (projected_funds < 0) {
+                warning_weeks = offset + 1;
+                break;
+            }
+        }
         if (advisor_state.treasury >= 0 && !advisor_state.bankrupt &&
-            simulation_started && !paused && weekly_deficit > 0 && runway <= 3 &&
+            simulation_started && !paused && warning_weeks > 0 && warning_weeks <= 3 &&
             !advisor_acknowledged) {
             advisor_open = true;
             advisor_acknowledged = true;
@@ -1843,7 +1880,7 @@ int main(int argc, char** argv) {
             feedback = "Your city advisor sees a budget crisis approaching.";
             feedback_until = now + 5000;
         }
-        if (weekly_deficit <= 0 || runway > 5) advisor_acknowledged = false;
+        if (warning_weeks == 0) advisor_acknowledged = false;
         title(window, world.snapshot(), selected, paused, simulation_started);
         SDL_SetRenderDrawColor(renderer, 34, 51, 55, 255);
         SDL_RenderClear(renderer);
@@ -2177,7 +2214,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
                                 "OPTIONS ABOVE");
         }
-        if (budget_open) draw_budget_panel(renderer, state, simulation_started);
+        if (budget_open) draw_budget_panel(renderer, state);
         if (state.bankrupt && !budget_open) {
             tint(renderer, {margin, header, map_width, map_height}, {12, 24, 28}, 175);
             fill(renderer, {220, 184, 560, 328}, {218, 113, 91});
@@ -2543,12 +2580,17 @@ int main(int argc, char** argv) {
             SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
             SDL_RenderDebugTextFormat(renderer, advisor_panel.x + 24,
                 advisor_panel.y + 158,
-                "Funds %d  |  Weekly deficit %d  |  About %d weeks of runway",
-                state.treasury, weekly_deficit, std::max(1, runway));
+                "Funds %d  |  Base weekly net %+d  |  Risk in about %d weeks",
+                state.treasury, weekly_base_net, warning_weeks);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, advisor_panel.x + 24,
                 advisor_panel.y + 194,
-                "The advisor uses current town conditions to explain its recommendation.");
+                state.loan_balance > 0
+                    ? "An active loan already adds a payment every four weeks."
+                    : "A loan adds 200 now, with monthly principal and interest payments.");
+            draw_button(renderer, advisor_loan_button,
+                state.loan_balance > 0 ? "LOAN ACTIVE" : "BORROW 200",
+                state.loan_balance > 0);
             draw_button(renderer, advisor_budget_button, "OPEN BUDGET");
             draw_button(renderer, advisor_resume_button, "RESUME TOWN");
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);

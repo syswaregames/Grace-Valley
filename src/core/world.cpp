@@ -650,8 +650,13 @@ Snapshot World::evaluate() const {
             ? base_services * 2 : base_services;
     next.community_upkeep = next.population / 2 +
                             next.population * next.population / 150;
+    next.loan_interest = next.loan_balance > 0
+        ? (next.loan_balance * 5 + 99) / 100 : 0;
+    next.monthly_loan_payment = next.loan_balance > 0
+        ? std::min(20, next.loan_balance) + next.loan_interest : 0;
+    next.loan_due_this_week = next.week % 4 == 0 ? next.monthly_loan_payment : 0;
     next.weekly_upkeep = next.building_upkeep + next.road_upkeep + next.service_upkeep +
-                         next.community_upkeep;
+                         next.community_upkeep + next.loan_due_this_week;
     next.belonging = homes == 0 ? 60 : total_belonging / homes;
     next.care = homes == 0 ? 60 : total_care / homes;
     next.happiness = std::clamp((next.belonging + next.care) / 2 +
@@ -723,6 +728,8 @@ void World::advance_week() {
         ++state_.week;
         return;
     }
+    if (state_.loan_due_this_week > 0)
+        state_.loan_balance -= std::min(20, state_.loan_balance);
     for (std::size_t i = 0; i < tiles_.size(); ++i) {
         if (tiles_[i] != Tile::road) continue;
         if (state_.road_budget == RoadBudget::lean)
@@ -831,6 +838,15 @@ void World::set_tax_policy(TaxPolicy policy) {
     state_ = evaluate();
 }
 
+bool World::take_loan() {
+    if (state_.bankrupt || state_.loan_balance > 0 ||
+        state_.treasury > 1000000000 - loan_amount) return false;
+    state_.treasury += loan_amount;
+    state_.loan_balance = loan_amount;
+    state_ = evaluate();
+    return true;
+}
+
 EventError World::can_host_event(EventKind kind) const {
     if (state_.bankrupt) return EventError::bankrupt;
     if (state_.population < 2) return EventError::no_people;
@@ -858,7 +874,7 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 4\n";
+    output << "GRACE_VALLEY_WORLD 5\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
@@ -868,7 +884,8 @@ bool World::save(std::ostream& output) const {
            << static_cast<int>(state_.tax_policy) << ' '
            << state_.events_hosted << ' ' << state_.event_weeks_left << ' '
            << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << ' '
-           << low_score_weeks_ << ' ' << recovery_weeks_ << '\n';
+           << low_score_weeks_ << ' ' << recovery_weeks_ << ' '
+           << state_.loan_balance << '\n';
     output << width << ' ' << height << '\n';
     for (std::size_t i = 0; i < tiles_.size(); ++i)
         output << static_cast<int>(tiles_[i]) << ' '
@@ -883,7 +900,7 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version < 1 || version > 4))
+        (version < 1 || version > 5))
         return std::nullopt;
     World result;
     int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
@@ -897,6 +914,8 @@ std::optional<World> World::load(std::istream& input) {
         return std::nullopt;
     if (version >= 4 && !(input >> low_score_weeks >> recovery_weeks))
         return std::nullopt;
+    if (version >= 5 && !(input >> result.state_.loan_balance))
+        return std::nullopt;
     if (result.state_.week < 1 || result.state_.week > 100000000 ||
         result.state_.population < 0 || result.state_.population > width * height * 4 ||
         result.state_.treasury < -1000000000 || result.state_.treasury > 1000000000 ||
@@ -905,6 +924,7 @@ std::optional<World> World::load(std::istream& input) {
         roads < 0 || roads > 2 ||
         low_score_weeks < 0 || low_score_weeks > 2 ||
         recovery_weeks < 0 || recovery_weeks > 2 ||
+        result.state_.loan_balance < 0 || result.state_.loan_balance > loan_amount ||
         tax < 0 || tax > 2 || result.state_.events_hosted < 0 ||
         result.state_.event_weeks_left < 0 || result.state_.event_weeks_left > 2 ||
         event_kind < 0 || event_kind > 1 ||
