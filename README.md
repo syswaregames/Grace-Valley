@@ -9,7 +9,8 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Action | Control |
 | --- | --- |
 | Select road, residential, commercial, industrial, chapel, pantry, park, power plant | `1` through `8` |
-| Select a tool with the mouse | Click any of the eight icons in the two-column right toolbar; small numbers show keyboard shortcuts |
+| Select a tool with the mouse | Click an icon in the two-column right toolbar; small numbers show keyboard shortcuts |
+| Demolish roads, zones, or buildings | Select **Bulldozer** or press `9`, then click or drag with the left mouse button |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
 | Save the current town | Click **Save** at the top or press `F5` |
@@ -19,6 +20,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Host a community gathering | `E` (30 funds) |
 | Organize a food drive | `F` (25 funds) |
 | Place selected building | Left click |
+| Remove a road, zone, or building | Select the bulldozer (`9`), then left click or drag; the right mouse button does not demolish |
 | Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
 | Build a bridge | With Road selected, click or drag from an existing road across water |
 | Upgrade a busy road | Click **Upgrade Road** in the sidebar or press `U`, then click road tiles; `Shift` + left click is a shortcut |

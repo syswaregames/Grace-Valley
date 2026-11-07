@@ -44,6 +44,7 @@ constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
+constexpr SDL_FRect bulldozer_button{static_cast<float>(sidebar_x + 8), 466, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
     return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
             static_cast<float>(140 + (index / 2) * 82), 82, 76};
@@ -977,6 +978,7 @@ int main(int argc, char** argv) {
     bool reports_open = capture_reports;
     bool options_open = capture_options;
     bool upgrade_mode = false;
+    bool bulldozer_mode = false;
     bool dragging = false;
     bool painting_tiles = false;
     int paint_x = 0, paint_y = 0;
@@ -1010,6 +1012,7 @@ int main(int argc, char** argv) {
         reports_open = false;
         options_open = false;
         upgrade_mode = false;
+        bulldozer_mode = false;
         dragging = false;
         painting_tiles = false;
         last_week = SDL_GetTicks();
@@ -1393,8 +1396,17 @@ int main(int argc, char** argv) {
                 if (event.key.key >= SDLK_1 && event.key.key <= SDLK_8) {
                     selected = tools[static_cast<std::size_t>(event.key.key - SDLK_1)];
                     upgrade_mode = false;
+                    bulldozer_mode = false;
                     options_open = false;
                     painting_tiles = false;
+                }
+                if (event.key.key == SDLK_9) {
+                    bulldozer_mode = !bulldozer_mode;
+                    upgrade_mode = false;
+                    painting_tiles = false;
+                    options_open = false;
+                    feedback = bulldozer_mode ? "Bulldozer selected. Click or drag to clear roads, zones, and buildings." : "Bulldozer off.";
+                    feedback_until = SDL_GetTicks() + 3500;
                 }
             }
             if (event.type == SDL_EVENT_MOUSE_WHEEL) {
@@ -1411,7 +1423,19 @@ int main(int argc, char** argv) {
                 camera.pan(x - old_x, y - old_y);
             }
             if (event.type == SDL_EVENT_MOUSE_MOTION && painting_tiles &&
-                (selected == grace::Tile::road || is_zone(selected))) {
+                bulldozer_mode) {
+                float mx = event.motion.x, my = event.motion.y;
+                SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                int x, y;
+                if (camera.tile_at(mx, my, x, y) && (x != paint_x || y != paint_y)) {
+                    if (world.remove(x, y)) feedback = "Bulldozed. Tile cleared.";
+                    paint_x = x;
+                    paint_y = y;
+                    feedback_until = SDL_GetTicks() + 2000;
+                }
+            }
+            if (event.type == SDL_EVENT_MOUSE_MOTION && painting_tiles &&
+                !bulldozer_mode && (selected == grace::Tile::road || is_zone(selected))) {
                 float mx = event.motion.x, my = event.motion.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
                 int x, y;
@@ -1529,9 +1553,17 @@ int main(int argc, char** argv) {
                                 break;
                             }
                         } else {
+                            if (contains(bulldozer_button, mx, my)) {
+                                bulldozer_mode = !bulldozer_mode;
+                                upgrade_mode = false;
+                                painting_tiles = false;
+                                feedback = bulldozer_mode ? "Bulldozer selected. Click or drag to clear roads, zones, and buildings." : "Bulldozer off.";
+                                feedback_until = SDL_GetTicks() + 3500;
+                                continue;
+                            }
                             if (contains(upgrade_button, mx, my)) {
                                 upgrade_mode = !upgrade_mode;
-                                if (upgrade_mode) selected = grace::Tile::road;
+                                if (upgrade_mode) { selected = grace::Tile::road; bulldozer_mode = false; }
                                 painting_tiles = false;
                                 feedback = upgrade_mode
                                     ? "Road upgrade: click a road tile to advance one level."
@@ -1542,6 +1574,7 @@ int main(int argc, char** argv) {
                                 if (contains(tool_button(static_cast<int>(index)), mx, my)) {
                                     selected = tools[index];
                                     upgrade_mode = false;
+                                    bulldozer_mode = false;
                                     painting_tiles = false;
                                     feedback = std::string(grace::World::name(selected)) +
                                         " selected. Cost " +
@@ -1556,6 +1589,17 @@ int main(int argc, char** argv) {
                 int x, y;
                 if (camera.tile_at(mx, my, x, y)) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
+                        if (bulldozer_mode) {
+                            painting_tiles = true;
+                            paint_x = x;
+                            paint_y = y;
+                            if (world.remove(x, y)) feedback = "Bulldozed. Tile cleared.";
+                            else feedback = (x == 12 && y == 8)
+                                ? "The chapel's starting road cannot be removed."
+                                : "There is nothing to demolish here.";
+                            feedback_until = SDL_GetTicks() + 3000;
+                            continue;
+                        }
                         if (upgrade_mode || (SDL_GetModState() & SDL_KMOD_SHIFT)) {
                             painting_tiles = false;
                             const int price = world.next_road_upgrade_cost(x, y);
@@ -1599,13 +1643,6 @@ int main(int argc, char** argv) {
                                 (zoning ? " marked for " : " built for ") +
                                 std::to_string(price) + " funds.";
                         } else feedback = placement_message(error);
-                    }
-                    if (event.button.button == SDL_BUTTON_RIGHT) {
-                        painting_tiles = false;
-                        if (world.remove(x, y)) feedback = "Tile cleared. Disconnected areas are marked red.";
-                        else feedback = (x == 12 && y == 8)
-                            ? "The chapel's starting road cannot be removed."
-                            : "There is nothing to remove here.";
                     }
                     feedback_until = SDL_GetTicks() + 3500;
                 }
@@ -1684,7 +1721,7 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, margin, 76,
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
-                : "TOOLS 1-8  |  DRAG TO BUILD  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
+                : "TOOLS 1-9  |  DRAG TO BUILD / CLEAR  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
         if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
              state.bad_roads > 0 || state.abandoned_buildings > 0 ||
              state.city_score < 30) &&
@@ -1729,6 +1766,32 @@ int main(int argc, char** argv) {
             for (int x = 0; x < grace::World::width; ++x)
                 draw_tile(renderer, world, x, y, camera, car_animation_ms);
 
+        // Industry emits slow, dark smoke puffs that drift across the city.
+        // The effect is visual only; pollution's gameplay impact remains in World.
+        for (int y = 0; y < grace::World::height; ++y) {
+            for (int x = 0; x < grace::World::width; ++x) {
+                const auto source = world.tile(x, y);
+                if (source != grace::Tile::industrial &&
+                    source != grace::Tile::abandoned_industrial) continue;
+                const auto building = camera.tile_rect(x, y);
+                const float phase = static_cast<float>(now) * 0.000035f +
+                    static_cast<float>((x * 17 + y * 31) % 97) * 0.09f;
+                for (int puff = 0; puff < 4; ++puff) {
+                    const float travel = std::fmod(phase + puff * 0.31f, 1.0f);
+                    const float size = camera.cell_size() * (0.23f + 0.08f * puff);
+                    const float px = building.x + building.w * 0.53f +
+                        travel * camera.cell_size() * 1.7f - size * 0.4f;
+                    const float py = building.y + building.h * 0.04f -
+                        travel * camera.cell_size() * 1.25f - puff * 3.0f;
+                    tint(renderer, {px, py, size, size * 0.56f}, {50, 55, 55},
+                         static_cast<Uint8>(105 - puff * 13));
+                    tint(renderer, {px + size * 0.22f, py - size * 0.18f,
+                                    size * 0.58f, size * 0.45f}, {67, 70, 68},
+                         static_cast<Uint8>(86 - puff * 12));
+                }
+            }
+        }
+
         float mx, my;
         if (capture) {
             mx = margin + (capture_bridge ? 20.5f : capture_traffic ? 12.5f :
@@ -1755,7 +1818,7 @@ int main(int argc, char** argv) {
             hover_started = now;
         }
         const bool stroke_start = over_tile && !upgrade_mode &&
-            (selected == grace::Tile::road || is_zone(selected)) &&
+            !bulldozer_mode && (selected == grace::Tile::road || is_zone(selected)) &&
             world.tile(hover_x, hover_y) == selected;
         const bool service_view = selected == grace::Tile::chapel ||
                                   selected == grace::Tile::pantry;
@@ -1787,7 +1850,9 @@ int main(int argc, char** argv) {
             tint(renderer, ghost, {252, 210, 110}, 65);
         }
         if (over_tile) {
-            const bool valid = upgrade_mode
+            const bool valid = bulldozer_mode
+                ? world.tile(hover_x, hover_y) != grace::Tile::meadow
+                : upgrade_mode
                 ? world.tile(hover_x, hover_y) == grace::Tile::road &&
                   world.next_road_upgrade_cost(hover_x, hover_y) > 0 &&
                   state.treasury >= world.next_road_upgrade_cost(hover_x, hover_y)
@@ -1797,7 +1862,11 @@ int main(int argc, char** argv) {
                 SDL_SetRenderDrawColor(renderer, preview.r, preview.g, preview.b, 255);
                 auto rect = camera.tile_rect(hover_x, hover_y);
                 rect.x += 2; rect.y += 2; rect.w -= 4; rect.h -= 4;
+            if (bulldozer_mode) {
+                tint(renderer, rect, {235, 112, 88}, 45);
+                SDL_SetRenderDrawColor(renderer, 235, 112, 88, 255);
                 SDL_RenderRect(renderer, &rect);
+            } else SDL_RenderRect(renderer, &rect);
         }
         SDL_SetRenderClipRect(renderer, nullptr);
         if (tooltip_area && now - hover_started >= 1200) {
@@ -1869,10 +1938,22 @@ int main(int argc, char** argv) {
                 SDL_RenderDebugTextFormat(renderer, rect.x + 8, rect.y + 59,
                                           "%dF", grace::World::cost(tool));
             }
+            draw_button(renderer, bulldozer_button, "BULLDOZER  9", bulldozer_mode);
+            fill(renderer, {static_cast<float>(sidebar_x + 15), 471, 21, 20},
+                 {195, 132, 75});
+            fill(renderer, {static_cast<float>(sidebar_x + 19), 466, 13, 8},
+                 {221, 177, 93});
+            fill(renderer, {static_cast<float>(sidebar_x + 18), 487, 17, 5},
+                 {40, 45, 43});
+            fill(renderer, {static_cast<float>(sidebar_x + 11), 493, 7, 7},
+                 {40, 45, 43});
+            fill(renderer, {static_cast<float>(sidebar_x + 34), 493, 7, 7},
+                 {40, 45, 43});
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 483, "ACTIVE TOOL");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 503,
-                                upgrade_mode ? "Road upgrade" : grace::World::name(selected));
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 507, "ACTIVE TOOL");
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 525,
+                                bulldozer_mode ? "Bulldozer" : upgrade_mode
+                                    ? "Road upgrade" : grace::World::name(selected));
             fill(renderer, {static_cast<float>(sidebar_x + 8), 536, 172, 76},
                  {43, 65, 65});
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
@@ -1893,7 +1974,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
                                 "DRAG ROAD / BRIDGE");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 691,
-                                "1-8 SHORTCUTS");
+                                "1-9 SHORTCUTS");
             SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
                                 "OPTIONS ABOVE");
         }
@@ -2090,9 +2171,11 @@ int main(int argc, char** argv) {
         }
         if (now >= feedback_until && contains({344, 10, 238, 48}, mx, my))
             hint = "City Score reflects joy, parks, services, road access, power, traffic, and cashflow.";
+        if (now >= feedback_until && bulldozer_mode)
+            hint = "Bulldozer: click or drag with the left mouse button to remove roads, zones, and buildings.";
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugTextFormat(renderer, margin, footer_top + 11,
-            "ACTIVE TOOL: %s%s", upgrade_mode ? "ROAD UPGRADE" :
+            "ACTIVE TOOL: %s%s", bulldozer_mode ? "BULLDOZER" : upgrade_mode ? "ROAD UPGRADE" :
                 grace::World::name(selected), options_open ? "  |  OPTIONS" : "");
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugText(renderer, margin, footer_top + 31, hint.c_str());
