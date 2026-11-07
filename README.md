@@ -13,6 +13,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Demolish roads, zones, or buildings | Select **Bulldozer** or press `9`, then click or drag with the left mouse button |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
+| Read zone demand at a glance | The top HUD keeps compact Residential (`R`), Commercial (`C`), and Industrial (`I`) bars visible; hover for a management tip |
 | Review financial trends | Open Reports to see a 12-week funds chart and income-versus-expenses chart |
 | Save the current town | Click **Save** at the top or press `F5` |
 | Load the saved town | Click **Load** at the top or press `F9` |

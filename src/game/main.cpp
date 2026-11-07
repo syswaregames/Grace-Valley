@@ -47,6 +47,9 @@ constexpr SDL_FRect reports_panel{75, 112, 870, 618};
 constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
 constexpr SDL_FRect advisor_budget_button{330, 468, 250, 44};
 constexpr SDL_FRect advisor_resume_button{644, 468, 250, 44};
+constexpr SDL_FRect demand_item(int index) {
+    return {static_cast<float>(20 + index * 98), 72, 92, 24};
+}
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect bulldozer_button{static_cast<float>(sidebar_x + 8), 466, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
@@ -1028,6 +1031,8 @@ int main(int argc, char** argv) {
     int hover_track_x = -1, hover_track_y = -1;
     float hover_anchor_x = 0, hover_anchor_y = 0;
     Uint64 hover_started = 0;
+    int demand_hover = -1;
+    Uint64 demand_hover_started = 0;
     constexpr std::array<grace::Tile, 8> tools{
         grace::Tile::road, grace::Tile::residential_zone,
         grace::Tile::commercial_zone, grace::Tile::industrial_zone,
@@ -1795,10 +1800,30 @@ int main(int argc, char** argv) {
             SDL_RenderTexture(renderer, logo, nullptr, &logo_rect);
         }
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
-        SDL_RenderDebugText(renderer, margin, 76,
+        const std::array<int, 3> demand_values{state.residential_demand,
+            state.commercial_demand, state.industrial_demand};
+        const std::array<const char*, 3> demand_initials{"R", "C", "I"};
+        const std::array<Color, 3> demand_colors{{
+            {105, 184, 114}, {91, 173, 187}, {218, 174, 103}}};
+        for (int index = 0; index < 3; ++index) {
+            const auto item = demand_item(index);
+            const auto color = demand_colors[static_cast<std::size_t>(index)];
+            fill(renderer, {item.x, item.y + 1, item.w, 21}, {43, 65, 65});
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
+            SDL_RenderDebugText(renderer, item.x + 4, item.y + 7,
+                                demand_initials[static_cast<std::size_t>(index)]);
+            fill(renderer, {item.x + 20, item.y + 9, 48, 6}, {66, 82, 83});
+            fill(renderer, {item.x + 20, item.y + 9,
+                0.48f * demand_values[static_cast<std::size_t>(index)], 6}, color);
+            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+            SDL_RenderDebugTextFormat(renderer, item.x + 71, item.y + 7,
+                "%02d", demand_values[static_cast<std::size_t>(index)]);
+        }
+        SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
+        SDL_RenderDebugText(renderer, 318, 76,
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
-                : "TOOLS 1-9  |  DRAG TO BUILD / CLEAR  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
+                : "1-9 TOOLS  |  DRAG  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
         if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
              state.bad_roads > 0 || state.abandoned_buildings > 0 ||
              state.city_score < 30) &&
@@ -1877,6 +1902,18 @@ int main(int argc, char** argv) {
         } else {
             SDL_GetMouseState(&mx, &my);
             SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+        }
+        int hovered_demand = -1;
+        if (!capture && !advisor_open && !state.bankrupt) {
+            for (int index = 0; index < 3; ++index)
+                if (contains(demand_item(index), mx, my)) {
+                    hovered_demand = index;
+                    break;
+                }
+        }
+        if (hovered_demand != demand_hover) {
+            demand_hover = hovered_demand;
+            demand_hover_started = now;
         }
         int hover_x = -1, hover_y = -1;
         const bool over_tile = camera.tile_at(mx, my, hover_x, hover_y);
@@ -2250,6 +2287,14 @@ int main(int argc, char** argv) {
             hint = "City Score reflects joy, parks, services, road access, power, traffic, and cashflow.";
         if (now >= feedback_until && bulldozer_mode)
             hint = "Bulldozer: click or drag with the left mouse button to remove roads, zones, and buildings.";
+        if (now >= feedback_until && demand_hover >= 0 &&
+            now - demand_hover_started >= 700) {
+            constexpr std::array<const char*, 3> demand_tips{
+                "Residential demand: parks, services, power, and quality of life attract households.",
+                "Commercial demand follows population and access; powered shops create jobs and tax income.",
+                "Industrial demand creates jobs and tax income; workshops add traffic, pollution, and noise."};
+            hint = demand_tips[static_cast<std::size_t>(demand_hover)];
+        }
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugTextFormat(renderer, margin, footer_top + 11,
             "ACTIVE TOOL: %s%s", bulldozer_mode ? "BULLDOZER" : upgrade_mode ? "ROAD UPGRADE" :
