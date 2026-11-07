@@ -23,6 +23,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Organize a food drive | `F` (25 funds) |
 | Place selected building | Left click |
 | Remove a road, zone, or building | Select the bulldozer (`9`), then left click or drag; the right mouse button does not demolish |
+| Move the map | Hold the right mouse button and drag on the map, or use `WASD` / arrow keys |
 | Draw roads | Select road (`1`), then hold left click and drag; fast drags fill skipped tiles |
 | Build a bridge | With Road selected, click or drag from an existing road across water |
 | Upgrade a busy road | Click **Upgrade Road** in the sidebar or press `U`, then click road tiles; `Shift` + left click is a shortcut |

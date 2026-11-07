@@ -1106,6 +1106,7 @@ int main(int argc, char** argv) {
     bool upgrade_mode = false;
     bool bulldozer_mode = false;
     bool dragging = false;
+    Uint8 pan_button = 0;
     bool painting_tiles = false;
     bool advisor_open = false;
     bool advisor_acknowledged = false;
@@ -1156,6 +1157,7 @@ int main(int argc, char** argv) {
         finance_history.clear();
         record_finances();
         dragging = false;
+        pan_button = 0;
         painting_tiles = false;
         last_week = SDL_GetTicks();
         feedback = "New town ready. Build a power plant (8), then press Space.";
@@ -1495,11 +1497,15 @@ int main(int argc, char** argv) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) running = false;
             if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
-                event.button.button == SDL_BUTTON_MIDDLE) dragging = false;
+                event.button.button == pan_button) {
+                dragging = false;
+                pan_button = 0;
+            }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_UP &&
                 event.button.button == SDL_BUTTON_LEFT) painting_tiles = false;
             if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
                 dragging = false;
+                pan_button = 0;
                 painting_tiles = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
@@ -1619,6 +1625,19 @@ int main(int argc, char** argv) {
                 if (event.button.button == SDL_BUTTON_MIDDLE &&
                     !world.snapshot().bankrupt) {
                     dragging = true;
+                    pan_button = SDL_BUTTON_MIDDLE;
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_RIGHT) {
+                    float pan_x = event.button.x, pan_y = event.button.y;
+                    SDL_RenderCoordinatesFromWindow(renderer, pan_x, pan_y, &pan_x, &pan_y);
+                    if (!world.snapshot().bankrupt && !budget_open && !reports_open &&
+                        !advisor_open && pan_x >= margin && pan_x < margin + map_width &&
+                        pan_y >= header && pan_y < header + map_height) {
+                        dragging = true;
+                        pan_button = SDL_BUTTON_RIGHT;
+                        painting_tiles = false;
+                    }
                     continue;
                 }
                 float mx = event.button.x;
@@ -1844,6 +1863,7 @@ int main(int argc, char** argv) {
                 paused = true;
                 budget_open = false;
                 dragging = false;
+                pan_button = 0;
                 painting_tiles = false;
                 feedback = "BANKRUPT: weekly expenses emptied the treasury. Press Backspace for a new town.";
                 feedback_until = now + 10000;
@@ -1945,7 +1965,7 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, 318, 76,
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
-                : "1-9 TOOLS  |  DRAG  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
+                : "1-9 TOOLS  |  DRAG BUILD  |  RIGHT DRAG / WASD PAN  |  I REPORTS");
         if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
              state.bad_roads > 0 || state.abandoned_buildings > 0 ||
              state.city_score < 30) &&
