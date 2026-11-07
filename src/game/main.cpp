@@ -31,15 +31,18 @@ constexpr int header = 100;
 // itself can extend well beyond the initial view.
 constexpr int map_width = 960;
 constexpr int map_height = 640;
+constexpr int footer_height = 58;
 constexpr int sidebar_x = margin + map_width + 16;
 constexpr int sidebar_width = 188;
 constexpr int window_width = sidebar_x + sidebar_width + 20;
-constexpr int window_height = map_height + header + 118;
-constexpr SDL_FRect play_button{625, 17, 102, 42};
-constexpr SDL_FRect budget_button{737, 17, 102, 42};
-constexpr SDL_FRect options_button{849, 17, 102, 42};
-constexpr SDL_FRect save_button{962, 17, 68, 42};
-constexpr SDL_FRect load_button{1038, 17, 68, 42};
+constexpr int window_height = map_height + header + footer_height;
+constexpr SDL_FRect play_button{625, 17, 78, 42};
+constexpr SDL_FRect budget_button{709, 17, 78, 42};
+constexpr SDL_FRect reports_button{793, 17, 82, 42};
+constexpr SDL_FRect options_button{881, 17, 82, 42};
+constexpr SDL_FRect save_button{969, 17, 58, 42};
+constexpr SDL_FRect load_button{1033, 17, 58, 42};
+constexpr SDL_FRect reports_panel{75, 112, 870, 618};
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
     return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
@@ -866,13 +869,14 @@ int main(int argc, char** argv) {
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
+    const bool capture_reports = argc > 2 && std::string(argv[1]) == "--capture-reports";
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
-         capture_budget || capture_options || capture_zones || capture_traffic ||
+         capture_budget || capture_reports || capture_options || capture_zones || capture_traffic ||
          capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
@@ -970,6 +974,7 @@ int main(int argc, char** argv) {
     bool simulation_started = soak_seconds > 0 || capture_zones || capture_traffic ||
         capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
+    bool reports_open = capture_reports;
     bool options_open = capture_options;
     bool upgrade_mode = false;
     bool dragging = false;
@@ -1002,6 +1007,7 @@ int main(int argc, char** argv) {
         simulation_started = false;
         paused = true;
         budget_open = false;
+        reports_open = false;
         options_open = false;
         upgrade_mode = false;
         dragging = false;
@@ -1154,6 +1160,7 @@ int main(int argc, char** argv) {
                     paused = saved_paused != 0;
                     simulation_started = saved_started != 0;
                     budget_open = false;
+                    reports_open = false;
                     options_open = false;
                     dragging = false;
                     painting_tiles = false;
@@ -1344,6 +1351,7 @@ int main(int argc, char** argv) {
                 if (event.key.key == SDLK_F9) { load_game(); continue; }
                 if (event.key.key == SDLK_ESCAPE) {
                     if (budget_open) budget_open = false;
+                    else if (reports_open) reports_open = false;
                     else if (options_open) options_open = false;
                     else running = false;
                     continue;
@@ -1354,7 +1362,12 @@ int main(int argc, char** argv) {
                 }
                 if (event.key.key == SDLK_B) {
                     budget_open = !budget_open;
-                    if (budget_open) options_open = false;
+                    if (budget_open) { options_open = false; reports_open = false; }
+                    continue;
+                }
+                if (event.key.key == SDLK_I) {
+                    reports_open = !reports_open;
+                    if (reports_open) { budget_open = false; options_open = false; }
                     continue;
                 }
                 if (world.snapshot().bankrupt) continue;
@@ -1444,19 +1457,27 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (event.button.button == SDL_BUTTON_LEFT &&
+                    contains(reports_button, mx, my)) {
+                    reports_open = !reports_open;
+                    if (reports_open) { budget_open = false; options_open = false; }
+                    painting_tiles = false;
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(budget_button, mx, my)) {
                     budget_open = !budget_open;
-                    if (budget_open) options_open = false;
+                    if (budget_open) { options_open = false; reports_open = false; }
                     painting_tiles = false;
                     continue;
                 }
                 if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(options_button, mx, my)) {
                     options_open = !options_open;
-                    if (options_open) budget_open = false;
+                    if (options_open) { budget_open = false; reports_open = false; }
                     painting_tiles = false;
                     continue;
                 }
+                if (reports_open && contains(reports_panel, mx, my)) continue;
                 if (budget_open) {
                     if (event.button.button == SDL_BUTTON_RIGHT) budget_open = false;
                     if (event.button.button == SDL_BUTTON_LEFT &&
@@ -1651,6 +1672,7 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, 344, 56, "COMMUNITY HEALTH & GROWTH");
         draw_button(renderer, play_button, paused ? "PLAY" : "PAUSE", !paused);
         draw_button(renderer, budget_button, "BUDGET", budget_open);
+        draw_button(renderer, reports_button, "REPORTS", reports_open);
         draw_button(renderer, options_button, "OPTIONS", options_open);
         draw_button(renderer, save_button, "SAVE");
         draw_button(renderer, load_button, "LOAD");
@@ -1662,7 +1684,7 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, margin, 76,
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
-                : "TOOLS 1-8  |  DRAG TO BUILD  |  WASD PAN  |  WHEEL ZOOM");
+                : "TOOLS 1-8  |  DRAG TO BUILD  |  WASD PAN  |  WHEEL ZOOM  |  I REPORTS");
         if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
              state.bad_roads > 0 || state.abandoned_buildings > 0 ||
              state.city_score < 30) &&
@@ -1718,7 +1740,7 @@ int main(int argc, char** argv) {
         }
         int hover_x = -1, hover_y = -1;
         const bool over_tile = camera.tile_at(mx, my, hover_x, hover_y);
-        const bool tooltip_area = over_tile && !budget_open && !options_open &&
+        const bool tooltip_area = over_tile && !budget_open && !reports_open && !options_open &&
                                   !state.bankrupt && !dragging && !painting_tiles;
         if (!tooltip_area) {
             hover_tracking = false;
@@ -1855,29 +1877,17 @@ int main(int argc, char** argv) {
                  {43, 65, 65});
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 16, 543, "CITY STATUS");
-            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-            int status_y = 561;
-            auto status_line = [&](const char* label, int count) {
-                if (count <= 0 || status_y > 591) return;
-                SDL_RenderDebugTextFormat(renderer, sidebar_x + 16, status_y,
-                    "%s: %d", label, count);
-                status_y += 15;
-            };
-            if (state.congested_roads == 0 && state.bad_roads == 0 &&
-                state.noise_affected_homes == 0 && state.abandoned_buildings == 0 &&
-                state.city_score >= 30) {
-                SDL_SetRenderDrawColor(renderer, 142, 207, 151, 255);
-                SDL_RenderDebugText(renderer, sidebar_x + 16, status_y,
-                                    "ALL SYSTEMS CLEAR");
-            } else {
-                status_line("TRAFFIC", state.congested_roads);
-                status_line("ROAD WEAR", state.bad_roads);
-                status_line("NOISE", state.noise_affected_homes);
-                status_line("ABANDONED", state.abandoned_buildings);
-                if (state.city_score < 30 && status_y <= 591)
-                    SDL_RenderDebugText(renderer, sidebar_x + 16, status_y,
-                                        "CITY SCORE CRITICAL");
-            }
+            const int active_issues = (state.congested_roads > 0) +
+                (state.bad_roads > 0) + (state.noise_affected_homes > 0) +
+                (state.abandoned_buildings > 0) + (state.city_score < 30);
+            SDL_SetRenderDrawColor(renderer, active_issues == 0 ? 142 : 245,
+                active_issues == 0 ? 207 : 190, active_issues == 0 ? 151 : 132, 255);
+            if (active_issues == 0)
+                SDL_RenderDebugText(renderer, sidebar_x + 16, 562, "ALL CLEAR");
+            else SDL_RenderDebugTextFormat(renderer, sidebar_x + 16, 562,
+                "%d ACTIVE ISSUES", active_issues);
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, sidebar_x + 16, 581, "CLICK REPORTS  |  I");
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
@@ -1976,32 +1986,12 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, 329, 481,
                 "BACKSPACE: NEW TOWN    B: BUDGET");
         }
-        fill(renderer, {0, static_cast<float>(header + map_height), window_width, 118},
-             {34, 51, 55});
+        fill(renderer, {0, static_cast<float>(header + map_height), window_width,
+                        static_cast<float>(footer_height)}, {34, 51, 55});
         const int footer_top = header + map_height;
-        auto hud_card = [&](float x, const char* label, const char* value,
-                            Color accent) {
-            fill(renderer, {x, static_cast<float>(footer_top + 6), 306, 34},
-                 {43, 65, 65});
-            fill(renderer, {x, static_cast<float>(footer_top + 6), 3, 34}, accent);
-            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, x + 11, footer_top + 9, label);
-            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-            SDL_RenderDebugText(renderer, x + 11, footer_top + 23, value);
-        };
-        char town_card[80], network_card[80], community_card[80];
-        std::snprintf(town_card, sizeof(town_card), "JOY %d  |  CARE %d  |  BELONG %d",
-            state.happiness, state.care, state.belonging);
-        std::snprintf(network_card, sizeof(network_card), "ROADS %d  |  COMMUTERS %d  |  PEAK %d",
-            state.connected_roads, state.commuters, state.peak_traffic);
-        std::snprintf(community_card, sizeof(community_card), "PWR %d/%d  |  VOL %d/%d  |  SERVED %d",
-            state.powered_demand, state.power_capacity, state.volunteers_used,
-            state.volunteers_available, state.served_homes);
-        hud_card(20, "TOWN", town_card, {105, 184, 114});
-        hud_card(336, "NETWORK", network_card, {91, 173, 187});
-        hud_card(652, "COMMUNITY", community_card, {218, 174, 103});
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-        std::string hint = now < feedback_until ? feedback : service_view && !over_tile
+        std::string hint = reports_open ? "City reports are open. Click REPORTS or press I to close." :
+            now < feedback_until ? feedback : service_view && !over_tile
             ? std::string(grace::World::name(selected)) + " covers " +
                 std::to_string(world.homes_with_service(selected)) + "/" +
                 std::to_string(state.connected_homes) + " connected homes. Hover to preview coverage."
@@ -2101,25 +2091,125 @@ int main(int argc, char** argv) {
         if (now >= feedback_until && contains({344, 10, 238, 48}, mx, my))
             hint = "City Score reflects joy, parks, services, road access, power, traffic, and cashflow.";
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
-        SDL_RenderDebugText(renderer, margin, footer_top + 47, hint.c_str());
-        auto demand_bar = [&](int x, const char* label, int demand, Color color) {
-            const float y = static_cast<float>(footer_top + 70);
+        SDL_RenderDebugTextFormat(renderer, margin, footer_top + 11,
+            "ACTIVE TOOL: %s%s", upgrade_mode ? "ROAD UPGRADE" :
+                grace::World::name(selected), options_open ? "  |  OPTIONS" : "");
+        SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
+        SDL_RenderDebugText(renderer, margin, footer_top + 31, hint.c_str());
+        if (reports_open) {
+            tint(renderer, {static_cast<float>(margin), static_cast<float>(header),
+                static_cast<float>(map_width), static_cast<float>(map_height)},
+                {12, 20, 22}, 170);
+            fill(renderer, reports_panel, {29, 45, 46});
+            SDL_SetRenderDrawColor(renderer, 202, 169, 104, 255);
+            SDL_RenderRect(renderer, &reports_panel);
+            fill(renderer, {reports_panel.x + 1, reports_panel.y + 1,
+                reports_panel.w - 2, 38}, {43, 65, 65});
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugText(renderer, reports_panel.x + 18,
+                reports_panel.y + 14, "CITY REPORTS");
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, reports_panel.x + 620,
+                reports_panel.y + 14, "REPORTS / I / ESC CLOSE");
+
+            const auto card = [&](SDL_FRect rect, Color accent) {
+                fill(renderer, rect, {43, 65, 65});
+                fill(renderer, {rect.x, rect.y, 3, rect.h}, accent);
+            };
+            const int issue_count = (state.congested_roads > 0) +
+                (state.bad_roads > 0) + (state.noise_affected_homes > 0) +
+                (state.abandoned_buildings > 0) + (state.city_score < 30);
+            card({95, 162, 230, 95}, score_color);
+            card({335, 162, 590, 95}, issue_count == 0
+                ? Color{105, 184, 114} : Color{218, 174, 103});
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, 109, 173, "CITY SCORE");
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugTextFormat(renderer, 109, 192, "%d / 100", state.city_score);
+            fill(renderer, {109, 216, 195, 12}, {66, 82, 83});
+            fill(renderer, {109, 216, 1.95f * state.city_score, 12}, score_color);
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, 350, 173, "CURRENT ISSUES");
+            SDL_SetRenderDrawColor(renderer, issue_count == 0 ? 142 : 255,
+                issue_count == 0 ? 207 : 220, issue_count == 0 ? 151 : 166, 255);
+            if (issue_count == 0)
+                SDL_RenderDebugText(renderer, 350, 195, "All clear. Community health is stable.");
+            else {
+                SDL_RenderDebugTextFormat(renderer, 350, 194,
+                    "Traffic %d  |  Worn roads %d  |  Noise affected homes %d",
+                    state.congested_roads, state.bad_roads, state.noise_affected_homes);
+                SDL_RenderDebugTextFormat(renderer, 350, 216,
+                    "Abandoned buildings %d  |  Critical City Score %s",
+                    state.abandoned_buildings, state.city_score < 30 ? "YES" : "NO");
+            }
+
+            fill(renderer, {95, 272, 830, 133}, {36, 55, 55});
             SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-            SDL_RenderDebugText(renderer, static_cast<float>(x), y, label);
-            fill(renderer, {static_cast<float>(x + 36), y, 190, 10}, {70, 85, 86});
-            fill(renderer, {static_cast<float>(x + 36), y,
-                            190.0f * demand / 100.0f, 10}, color);
+            SDL_RenderDebugText(renderer, 109, 282, "ZONE DEMAND");
+            const auto report_demand = [&](int y, const char* label, int value, Color color) {
+                SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+                SDL_RenderDebugText(renderer, 109, y, label);
+                fill(renderer, {258, static_cast<float>(y), 450, 10}, {66, 82, 83});
+                fill(renderer, {258, static_cast<float>(y), 4.5f * value, 10}, color);
+                SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+                SDL_RenderDebugTextFormat(renderer, 725, y, "%d / 100", value);
+            };
+            report_demand(302, "RESIDENTIAL", state.residential_demand,
+                          {105, 184, 114});
+            report_demand(333, "COMMERCIAL", state.commercial_demand,
+                          {91, 173, 187});
+            report_demand(364, "INDUSTRIAL", state.industrial_demand,
+                          {218, 174, 103});
+
+            card({95, 420, 260, 155}, {105, 184, 114});
+            card({375, 420, 260, 155}, {91, 173, 187});
+            card({655, 420, 270, 155}, {218, 174, 103});
             SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-            SDL_RenderDebugTextFormat(renderer, static_cast<float>(x + 236), y,
-                                      "%3d", demand);
-        };
-        demand_bar(20, "RES", state.residential_demand, {105, 184, 114});
-        demand_bar(340, "COM", state.commercial_demand, {91, 173, 187});
-        demand_bar(660, "IND", state.industrial_demand, {218, 174, 103});
-        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-        SDL_RenderDebugTextFormat(renderer, margin, footer_top + 99,
-            "BUSINESS TAX %s  |  JOBS %d  |  RESIDENTIAL / COMMERCIAL / INDUSTRIAL DEMAND",
-            tax_name(state.tax_policy), state.jobs);
+            SDL_RenderDebugText(renderer, 109, 431, "TOWN WELLBEING");
+            SDL_RenderDebugTextFormat(renderer, 109, 453, "Residents %d / %d",
+                                      state.population, state.capacity);
+            SDL_RenderDebugTextFormat(renderer, 109, 472, "Joy %d  |  Care %d",
+                                      state.happiness, state.care);
+            SDL_RenderDebugTextFormat(renderer, 109, 491, "Belonging %d",
+                                      state.belonging);
+            SDL_RenderDebugTextFormat(renderer, 109, 510, "Homes served %d",
+                                      state.served_homes);
+            SDL_RenderDebugText(renderer, 389, 431, "ROAD NETWORK");
+            SDL_RenderDebugTextFormat(renderer, 389, 453, "Connected roads %d",
+                                      state.connected_roads);
+            SDL_RenderDebugTextFormat(renderer, 389, 472, "Commuters %d  |  Peak %d",
+                                      state.commuters, state.peak_traffic);
+            SDL_RenderDebugTextFormat(renderer, 389, 491, "Congested %d  |  Worn %d",
+                                      state.congested_roads, state.bad_roads);
+            SDL_RenderDebugTextFormat(renderer, 389, 510, "Road condition %d%%",
+                                      state.average_road_condition);
+            SDL_RenderDebugText(renderer, 669, 431, "COMMUNITY SERVICES");
+            SDL_RenderDebugTextFormat(renderer, 669, 453, "Power %d/%d  Need %d",
+                state.powered_demand, state.power_capacity, state.power_demand);
+            SDL_RenderDebugTextFormat(renderer, 669, 472, "Outages %d  Noise homes %d",
+                state.unpowered_buildings, state.noise_affected_homes);
+            SDL_RenderDebugTextFormat(renderer, 669, 491, "Chapel %d  Pantry %d",
+                state.active_chapels, state.active_pantries);
+            SDL_RenderDebugTextFormat(renderer, 669, 510, "Volunteers %d/%d",
+                state.volunteers_used, state.volunteers_available);
+            SDL_RenderDebugTextFormat(renderer, 669, 529, "Abandoned %d",
+                state.abandoned_buildings);
+
+            fill(renderer, {95, 590, 830, 116}, {36, 55, 55});
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, 109, 601, "WEEKLY BUDGET SUMMARY");
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugTextFormat(renderer, 109, 623,
+                "IN %d  |  OUT %d  |  NET %+d",
+                state.weekly_income, state.weekly_upkeep,
+                state.weekly_income - state.weekly_upkeep);
+            SDL_RenderDebugTextFormat(renderer, 109, 643,
+                "GIVING %s  |  SERVICES %s  |  ROADS %s  |  TAX %s",
+                giving_name(state.giving_policy), service_name(state.service_budget),
+                road_budget_name(state.road_budget), tax_name(state.tax_policy));
+            SDL_RenderDebugText(renderer, 109, 665,
+                "Click BUDGET for policy controls and detailed expenses.");
+        }
         if (capture) {
             SDL_Surface* frame = SDL_RenderReadPixels(renderer, nullptr);
             if (!frame || !SDL_SavePNG(frame, argv[2])) {

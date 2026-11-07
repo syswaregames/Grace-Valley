@@ -11,6 +11,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Select road, residential, commercial, industrial, chapel, pantry, park, power plant | `1` through `8` |
 | Select a tool with the mouse | Click any of the eight icons in the two-column right toolbar; small numbers show keyboard shortcuts |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
+| Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
 | Save the current town | Click **Save** at the top or press `F5` |
 | Load the saved town | Click **Load** at the top or press `F9` |
 | Inspect chapel or pantry coverage | Select tool `5` or `6` |
@@ -38,7 +39,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Inspect a map item | Hover without moving for about 1.2 seconds |
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
-New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. Buildings cannot occupy the pond, but roads can cross it as bridges; building in woods clears them for 10 extra funds. The top bar shows the current week, population, joy, funds, and simulation controls; the right toolbar keeps all eight build tools visible and shows information about the selected tool. The lower bar shows demand, power, access, and placement guidance. A placement preview turns red when a tile is invalid or unaffordable.
+New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. Buildings cannot occupy the pond, but roads can cross it as bridges; building in woods clears them for 10 extra funds. The top bar keeps week, finances, City Score, and the primary controls visible. The right toolbar keeps the build tools visible. Click **Reports** or press `I` to see demand, community health, roads, services, and budget summaries when you need them. Placement guidance stays in the slim footer; invalid or unaffordable placements show a red preview.
 
 ### Save and load
 
