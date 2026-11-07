@@ -121,7 +121,6 @@ struct Camera {
 struct Color { Uint8 r, g, b; };
 
 struct FinanceSample { int week, funds, income, upkeep; };
-struct PowerSample { int week, capacity, demand, consumed; };
 enum class ReportTab { overview, power };
 
 void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
@@ -243,102 +242,78 @@ void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state) {
         state.loan_balance > 0);
 }
 
-void draw_power_report(SDL_Renderer* renderer, const grace::Snapshot& state,
-                       const std::vector<PowerSample>& history) {
-    const int spare = std::max(0, state.power_capacity - state.powered_demand);
-    const int unmet = std::max(0, state.power_demand - state.powered_demand);
-    constexpr std::array<const char*, 4> titles{
-        "PRODUCTION", "CONSUMED", "NEEDED", "SPARE OUTPUT"};
-    const std::array<int, 4> values{
-        state.power_capacity, state.powered_demand, state.power_demand, spare};
-    const std::array<Color, 4> colors{{
-        {218, 174, 103}, {105, 184, 114}, {91, 173, 187}, {142, 207, 151}}};
-    for (int i = 0; i < 4; ++i) {
-        const float x = 95.0f + i * 210.0f;
-        fill(renderer, {x, 163, 200, 90}, {43, 65, 65});
-        fill(renderer, {x, 163, 3, 90}, colors[static_cast<std::size_t>(i)]);
-        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-        SDL_RenderDebugText(renderer, x + 13, 177, titles[static_cast<std::size_t>(i)]);
-        SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
-        SDL_RenderDebugTextFormat(renderer, x + 13, 207, "%d", values[static_cast<std::size_t>(i)]);
-    }
-
-    fill(renderer, {95, 269, 830, 153}, {36, 55, 55});
-    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-    SDL_RenderDebugText(renderer, 109, 282, "POWER BALANCE TODAY");
-    const int scale = std::max({1, state.power_capacity, state.power_demand});
-    const auto power_bar = [&](float y, const char* label, int value, Color color) {
-        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-        SDL_RenderDebugText(renderer, 109, y, label);
-        fill(renderer, {280, y, 500, 14}, {66, 82, 83});
-        fill(renderer, {280, y, 500.0f * value / scale, 14}, color);
-        SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
-        SDL_RenderDebugTextFormat(renderer, 794, y, "%d", value);
-    };
-    power_bar(316, "PRODUCED", state.power_capacity, {218, 174, 103});
-    power_bar(348, "CONSUMED", state.powered_demand, {105, 184, 114});
-    power_bar(380, "CITY NEED", state.power_demand, {91, 173, 187});
-
-    fill(renderer, {95, 438, 830, 187}, {36, 55, 55});
-    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-    SDL_RenderDebugText(renderer, 109, 452, "POWER TREND  |  LAST 12 WEEKS");
-    const SDL_FRect chart{117, 484, 780, 107};
-    fill(renderer, chart, {31, 48, 48});
-    SDL_SetRenderDrawColor(renderer, 76, 94, 91, 255);
-    for (int line = 1; line <= 3; ++line) {
-        const float y = chart.y + chart.h * line / 4.0f;
-        SDL_RenderLine(renderer, chart.x, y, chart.x + chart.w, y);
-    }
-    int maximum = std::max(1, scale);
-    for (const auto& sample : history)
-        maximum = std::max({maximum, sample.capacity, sample.demand, sample.consumed});
-    const auto chart_y = [&](int value) {
-        return chart.y + chart.h - chart.h * value / maximum;
-    };
-    const std::array<Color, 3> line_colors{{
-        {218, 174, 103}, {105, 184, 114}, {91, 173, 187}}};
-    for (std::size_t i = 0; i < history.size(); ++i) {
-        const float x = chart.x + chart.w * static_cast<float>(i) /
-            std::max<std::size_t>(1, history.size() - 1);
-        const std::array<int, 3> current{
-            history[i].capacity, history[i].consumed, history[i].demand};
-        for (int series = 0; series < 3; ++series) {
-            const auto color = line_colors[static_cast<std::size_t>(series)];
-            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
-            if (i > 0) {
-                const float previous_x = chart.x + chart.w * static_cast<float>(i - 1) /
-                    std::max<std::size_t>(1, history.size() - 1);
-                const std::array<int, 3> previous{
-                    history[i - 1].capacity, history[i - 1].consumed, history[i - 1].demand};
-                SDL_RenderLine(renderer, previous_x,
-                    chart_y(previous[static_cast<std::size_t>(series)]),
-                    x, chart_y(current[static_cast<std::size_t>(series)]));
-            } else {
-                fill(renderer, {x - 3, chart_y(current[static_cast<std::size_t>(series)]) - 3,
-                    6, 6}, color);
-            }
+void draw_power_report(SDL_Renderer* renderer, const grace::World& world) {
+    const auto state = world.snapshot();
+    int zone_need = 0;
+    int disconnected_zones = 0;
+    for (int y = 0; y < grace::World::height; ++y) {
+        for (int x = 0; x < grace::World::width; ++x) {
+            const auto tile = world.tile(x, y);
+            const int need = tile == grace::Tile::residential_zone ? 1 :
+                tile == grace::Tile::commercial_zone ? 2 :
+                tile == grace::Tile::industrial_zone ? 3 : 0;
+            zone_need += need;
+            if (need > 0 && !world.is_connected(x, y)) ++disconnected_zones;
         }
     }
-    SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
-    SDL_RenderDebugText(renderer, 109, 602, "PRODUCED");
-    SDL_SetRenderDrawColor(renderer, 105, 184, 114, 255);
-    SDL_RenderDebugText(renderer, 213, 602, "CONSUMED");
-    SDL_SetRenderDrawColor(renderer, 91, 173, 187, 255);
-    SDL_RenderDebugText(renderer, 317, 602, "CITY NEED");
+    const int required = state.power_demand + zone_need;
+    const int covered = std::min(required, state.power_capacity);
+    const int shortage = std::max(0, required - state.power_capacity);
+    const auto text_color = [&](Uint8 r, Uint8 g, Uint8 b) {
+        SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+    };
+    fill(renderer, {95, 164, 830, 92}, {43, 65, 65});
+    text_color(180, 202, 187);
+    SDL_RenderDebugText(renderer, 112, 179, "TOTAL REQUIRED");
+    SDL_RenderDebugText(renderer, 382, 179, "CAPACITY AVAILABLE");
+    SDL_RenderDebugText(renderer, 682, 179, "ADDITIONAL NEEDED");
+    text_color(255, 239, 203);
+    SDL_RenderDebugTextFormat(renderer, 112, 211, "%d", required);
+    SDL_RenderDebugTextFormat(renderer, 382, 211, "%d", state.power_capacity);
+    text_color(shortage > 0 ? 245 : 142, shortage > 0 ? 130 : 207,
+               shortage > 0 ? 113 : 151);
+    SDL_RenderDebugTextFormat(renderer, 682, 211, "%d", shortage);
 
-    fill(renderer, {95, 640, 830, 65}, {43, 65, 65});
-    SDL_SetRenderDrawColor(renderer, unmet > 0 || state.unpowered_buildings > 0
-        ? 245 : 142, unmet > 0 || state.unpowered_buildings > 0
-        ? 190 : 207, unmet > 0 || state.unpowered_buildings > 0
-        ? 132 : 151, 255);
-    SDL_RenderDebugTextFormat(renderer, 109, 652,
-        "UNMET NEED %d  |  BUILDINGS WITHOUT POWER %d", unmet, state.unpowered_buildings);
-    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-    SDL_RenderDebugText(renderer, 109, 678,
-        state.power_capacity == 0 ? "Build a connected power plant (8) to supply the town." :
-        state.power_capacity < state.power_demand ? "Add a connected power plant before more zones develop." :
-        state.unpowered_buildings > 0 ? "Supply is available; check road connections to unpowered buildings." :
-        "Power supply currently covers every connected building.");
+    fill(renderer, {95, 274, 830, 220}, {36, 55, 55});
+    text_color(245, 238, 211);
+    SDL_RenderDebugText(renderer, 112, 292, "CAN YOUR POWER PLANTS COVER ALL ZONES?");
+    text_color(180, 202, 187);
+    SDL_RenderDebugTextFormat(renderer, 112, 323,
+        "REQUIRED: %d  |  CAPACITY CAN COVER: %d  |  SHORT: %d",
+        required, covered, shortage);
+    fill(renderer, {112, 355, 680, 30}, {66, 82, 83});
+    if (required > 0) {
+        const float covered_width = 680.0f * covered / required;
+        fill(renderer, {112, 355, covered_width, 30}, {105, 184, 114});
+        fill(renderer, {112 + covered_width, 355, 680 - covered_width, 30}, {215, 92, 76});
+    }
+    text_color(142, 207, 151);
+    SDL_RenderDebugText(renderer, 112, 402, "GREEN: CAPACITY AVAILABLE");
+    text_color(245, 150, 130);
+    SDL_RenderDebugText(renderer, 455, 402, "RED: MORE POWER NEEDED");
+    text_color(180, 202, 187);
+    SDL_RenderDebugText(renderer, 112, 452,
+        "Estimate assumes every empty zone develops; zones do not use power yet.");
+
+    fill(renderer, {95, 510, 830, 106}, {43, 65, 65});
+    text_color(245, 238, 211);
+    SDL_RenderDebugText(renderer, 112, 525, "WHERE THE NUMBERS COME FROM");
+    SDL_RenderDebugTextFormat(renderer, 112, 551,
+        "Existing buildings need %d  +  empty zones may need %d  =  %d",
+        state.power_demand, zone_need, required);
+    SDL_RenderDebugTextFormat(renderer, 112, 580,
+        "POWER IN USE NOW: %d  |  CAPACITY: %d", state.powered_demand, state.power_capacity);
+
+    fill(renderer, {95, 632, 830, 73}, {36, 55, 55});
+    text_color(245, 238, 211);
+    SDL_RenderDebugTextFormat(renderer, 112, 645,
+        "Buildings without power: %d  |  Zones without road access: %d",
+        state.unpowered_buildings, disconnected_zones);
+    SDL_RenderDebugText(renderer, 112, 674,
+        shortage > 0 ? "Add connected power plants to cover the projected shortfall." :
+        state.unpowered_buildings > 0 || disconnected_zones > 0 ?
+            "Check road connections: total capacity alone cannot reach disconnected tiles." :
+            "Capacity covers current buildings and all planned zones.");
 }
 
 enum class ToolCategory { roads, zones, civic };
@@ -1227,6 +1202,11 @@ int main(int argc, char** argv) {
         for (int y : {7, 6, 5, 4}) world.place(17, y, grace::Tile::road);
         for (int x = 18; x <= 23; ++x) world.place(x, 4, grace::Tile::road);
     }
+    if (capture_power) {
+        world.place(13, 9, grace::Tile::power_plant);
+        for (int x = 8; x <= 13; ++x)
+            world.place(x, 7, grace::Tile::industrial_zone);
+    }
     if (capture_zones) {
         world.place(9, 7, grace::Tile::residential_zone);
         world.place(11, 9, grace::Tile::commercial_zone);
@@ -1269,16 +1249,12 @@ int main(int argc, char** argv) {
     bool advisor_open = false;
     bool advisor_acknowledged = false;
     std::vector<FinanceSample> finance_history;
-    std::vector<PowerSample> power_history;
     int paint_x = 0, paint_y = 0;
     const auto record_finances = [&] {
         const auto snapshot = world.snapshot();
         finance_history.push_back({snapshot.week, snapshot.treasury,
                                    snapshot.weekly_income, snapshot.weekly_upkeep});
         if (finance_history.size() > 12) finance_history.erase(finance_history.begin());
-        power_history.push_back({snapshot.week, snapshot.power_capacity,
-                                 snapshot.power_demand, snapshot.powered_demand});
-        if (power_history.size() > 12) power_history.erase(power_history.begin());
     };
     record_finances();
     std::string feedback = capture_traffic
@@ -1319,7 +1295,6 @@ int main(int argc, char** argv) {
         advisor_open = false;
         advisor_acknowledged = false;
         finance_history.clear();
-        power_history.clear();
         record_finances();
         dragging = false;
         pan_button = 0;
@@ -1473,7 +1448,6 @@ int main(int argc, char** argv) {
                 else {
                     world = std::move(*restored);
                     finance_history.clear();
-                    power_history.clear();
                     record_finances();
                     advisor_open = false;
                     advisor_acknowledged = false;
@@ -2643,13 +2617,7 @@ int main(int argc, char** argv) {
                 reports_panel.y + 14, "TAB SWITCH  |  ESC CLOSE");
 
             if (report_tab == ReportTab::power) {
-                auto displayed_power = power_history;
-                const PowerSample current_power{state.week, state.power_capacity,
-                    state.power_demand, state.powered_demand};
-                if (!displayed_power.empty() && displayed_power.back().week == state.week)
-                    displayed_power.back() = current_power;
-                else displayed_power.push_back(current_power);
-                draw_power_report(renderer, state, displayed_power);
+                draw_power_report(renderer, world);
             } else {
 
             const auto card = [&](SDL_FRect rect, Color accent) {
