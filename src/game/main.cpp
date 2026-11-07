@@ -46,6 +46,7 @@ constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
 constexpr SDL_FRect report_overview_tab{314, 118, 120, 28};
 constexpr SDL_FRect report_power_tab{442, 118, 100, 28};
+constexpr SDL_FRect report_issues_tab{550, 118, 100, 28};
 constexpr SDL_FRect traffic_alert_button{804, 72, 180, 24};
 constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
 constexpr SDL_FRect advisor_loan_button{282, 468, 190, 44};
@@ -121,7 +122,7 @@ struct Camera {
 struct Color { Uint8 r, g, b; };
 
 struct FinanceSample { int week, funds, income, upkeep; };
-enum class ReportTab { overview, power };
+enum class ReportTab { overview, power, issues };
 
 void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
@@ -147,6 +148,23 @@ void draw_button(SDL_Renderer* renderer, SDL_FRect rect, const char* label,
     const float label_width = static_cast<float>(std::strlen(label) * 8);
     SDL_RenderDebugText(renderer, rect.x + (rect.w - label_width) / 2,
                         rect.y + (rect.h - 8) / 2, label);
+}
+
+void draw_play_control(SDL_Renderer* renderer, bool paused) {
+    draw_button(renderer, play_button, "", !paused);
+    const float cx = play_button.x + play_button.w / 2.0f;
+    const float cy = play_button.y + play_button.h / 2.0f;
+    if (paused) {
+        SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
+        for (int x = 0; x < 16; ++x) {
+            const float half_height = 10.0f * (16 - x) / 16.0f;
+            SDL_RenderLine(renderer, cx - 7 + x, cy - half_height,
+                           cx - 7 + x, cy + half_height);
+        }
+    } else {
+        fill(renderer, {cx - 10, cy - 10, 6, 20}, {247, 239, 213});
+        fill(renderer, {cx + 4, cy - 10, 6, 20}, {247, 239, 213});
+    }
 }
 
 void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state) {
@@ -849,6 +867,72 @@ std::optional<TrafficTip> traffic_tip(const grace::World& world) {
     return worst;
 }
 
+struct CityIssue { std::string title, detail, advice; };
+
+std::vector<CityIssue> city_issues(const grace::World& world) {
+    const auto s = world.snapshot();
+    std::vector<CityIssue> issues;
+    if (const auto traffic = traffic_tip(world))
+        issues.push_back({"TRAFFIC", "Hotspot (" + std::to_string(traffic->x + 1) +
+            "," + std::to_string(traffic->y + 1) + ")  " + std::to_string(traffic->flow) +
+            "/" + std::to_string(traffic->capacity) + " trips", traffic->action});
+    if (s.bad_roads > 0)
+        issues.push_back({"DAMAGED ROADS", std::to_string(s.bad_roads) + " road tiles need care.",
+            "Open Budget and set Road Care to Generous to repair roads over time."});
+    if (s.unpowered_buildings > 0)
+        issues.push_back({"POWER OUTAGE", std::to_string(s.unpowered_buildings) + " buildings lack power.",
+            s.power_capacity < s.power_demand ?
+                "Add a power plant beside a connected road. Check the Power report for demand." :
+                "Check road connections to the plant and affected buildings. Open the Power report."});
+    if (s.noise_affected_homes > 0)
+        issues.push_back({"NOISE AND POLLUTION", std::to_string(s.noise_affected_homes) + " homes are affected.",
+            "Move housing farther from power plants and workshops; check homes for the N marker."});
+    if (s.abandoned_buildings > 0 || s.city_score < 30)
+        issues.push_back({"CITY WELLBEING", std::to_string(s.abandoned_buildings) + " buildings abandoned; score " +
+            std::to_string(s.city_score) + "/100.",
+            "Improve services and roads. Score above 45 for 3 weeks reopens buildings."});
+    if (s.weekly_upkeep > s.weekly_income)
+        issues.push_back({"WEEKLY DEFICIT", "Expenses exceed income by " +
+            std::to_string(s.weekly_upkeep - s.weekly_income) + " funds.",
+            "Open Budget to review spending and taxes. Avoid expanding until the balance improves."});
+    return issues;
+}
+
+void draw_issues_report(SDL_Renderer* renderer, const grace::World& world) {
+    const auto issues = city_issues(world);
+    if (issues.empty()) {
+        fill(renderer, {95, 162, 830, 100}, {43, 65, 65});
+        SDL_SetRenderDrawColor(renderer, 142, 207, 151, 255);
+        SDL_RenderDebugText(renderer, 112, 181, "ALL CLEAR");
+        SDL_RenderDebugText(renderer, 112, 208, "No active city issues need attention.");
+        return;
+    }
+    for (std::size_t i = 0; i < issues.size(); ++i) {
+        const float x = 95.0f + static_cast<float>(i % 2) * 420.0f;
+        const float y = 162.0f + static_cast<float>(i / 2) * 178.0f;
+        fill(renderer, {x, y, 410, 160}, {43, 65, 65});
+        fill(renderer, {x, y, 3, 160}, {218, 174, 103});
+        SDL_SetRenderDrawColor(renderer, 255, 220, 166, 255);
+        SDL_RenderDebugText(renderer, x + 14, y + 14, issues[i].title.c_str());
+        SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+        SDL_RenderDebugText(renderer, x + 14, y + 39, issues[i].detail.c_str());
+        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+        SDL_RenderDebugText(renderer, x + 14, y + 70, "SUGGESTION");
+        std::string remaining = issues[i].advice;
+        for (int line = 0; line < 2 && !remaining.empty(); ++line) {
+            std::size_t count = std::min<std::size_t>(47, remaining.size());
+            if (count < remaining.size()) {
+                const auto split = remaining.rfind(' ', count);
+                if (split != std::string::npos && split > 0) count = split;
+            }
+            SDL_RenderDebugText(renderer, x + 14, y + 91 + line * 18,
+                                remaining.substr(0, count).c_str());
+            remaining.erase(0, count);
+            while (!remaining.empty() && remaining.front() == ' ') remaining.erase(0, 1);
+        }
+    }
+}
+
 std::string town_advice(const grace::World& world) {
     const auto state = world.snapshot();
     if (state.bankrupt) return "BANKRUPT: the treasury fell below zero. Press Backspace to start again.";
@@ -1147,7 +1231,9 @@ int main(int argc, char** argv) {
         (argc > 2 && std::string(argv[1]) == "--capture-power");
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
-    const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
+    const bool capture_issues = argc > 2 && std::string(argv[1]) == "--capture-issues";
+    const bool capture_traffic = capture_issues ||
+        (argc > 2 && std::string(argv[1]) == "--capture-traffic");
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
@@ -1255,8 +1341,9 @@ int main(int argc, char** argv) {
     bool simulation_started = soak_seconds > 0 || capture_zones || capture_traffic ||
         capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
-    bool reports_open = capture_reports || capture_power;
-    ReportTab report_tab = capture_power ? ReportTab::power : ReportTab::overview;
+    bool reports_open = capture_reports || capture_power || capture_issues;
+    ReportTab report_tab = capture_issues ? ReportTab::issues :
+        capture_power ? ReportTab::power : ReportTab::overview;
     bool options_open = capture_options;
     bool upgrade_mode = false;
     bool bulldozer_mode = false;
@@ -1735,7 +1822,8 @@ int main(int argc, char** argv) {
                 }
                 if (reports_open && event.key.key == SDLK_TAB) {
                     report_tab = report_tab == ReportTab::overview
-                        ? ReportTab::power : ReportTab::overview;
+                        ? ReportTab::power : report_tab == ReportTab::power
+                            ? ReportTab::issues : ReportTab::overview;
                     continue;
                 }
                 if (world.snapshot().bankrupt) continue;
@@ -1881,7 +1969,7 @@ int main(int argc, char** argv) {
                     world.snapshot().congested_roads > 0 &&
                     contains(traffic_alert_button, mx, my)) {
                     reports_open = true;
-                    report_tab = ReportTab::overview;
+                    report_tab = ReportTab::issues;
                     budget_open = false;
                     options_open = false;
                     continue;
@@ -1930,6 +2018,11 @@ int main(int argc, char** argv) {
                 if (reports_open && event.button.button == SDL_BUTTON_LEFT &&
                     contains(report_power_tab, mx, my)) {
                     report_tab = ReportTab::power;
+                    continue;
+                }
+                if (reports_open && event.button.button == SDL_BUTTON_LEFT &&
+                    contains(report_issues_tab, mx, my)) {
+                    report_tab = ReportTab::issues;
                     continue;
                 }
                 if (reports_open && contains(reports_panel, mx, my)) continue;
@@ -2184,7 +2277,7 @@ int main(int argc, char** argv) {
         fill(renderer, {344, 38, 2.38f * state.city_score, 10}, score_color);
         SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
         SDL_RenderDebugText(renderer, 344, 56, "COMMUNITY HEALTH & GROWTH");
-        draw_button(renderer, play_button, paused ? "PLAY" : "PAUSE", !paused);
+        draw_play_control(renderer, paused);
         draw_button(renderer, budget_button, "BUDGET", budget_open);
         draw_button(renderer, reports_button, "REPORTS", reports_open);
         draw_button(renderer, options_button, "OPTIONS", options_open);
@@ -2451,9 +2544,7 @@ int main(int argc, char** argv) {
                  {43, 65, 65});
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 16, 543, "CITY STATUS");
-            const int active_issues = (state.congested_roads > 0) +
-                (state.bad_roads > 0) + (state.noise_affected_homes > 0) +
-                (state.abandoned_buildings > 0) + (state.city_score < 30);
+            const int active_issues = static_cast<int>(city_issues(world).size());
             SDL_SetRenderDrawColor(renderer, active_issues == 0 ? 142 : 245,
                 active_issues == 0 ? 207 : 190, active_issues == 0 ? 151 : 132, 255);
             if (active_issues == 0)
@@ -2618,6 +2709,9 @@ int main(int argc, char** argv) {
                 "Industrial demand creates jobs and tax income; workshops add traffic, pollution, and noise."};
             hint = demand_tips[static_cast<std::size_t>(demand_hover)];
         }
+        if (contains(play_button, mx, my))
+            hint = paused ? "Play: start or resume the simulation (Space)." :
+                            "Pause: stop the simulation (Space).";
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugTextFormat(renderer, margin, footer_top + 11,
             "ACTIVE TOOL: %s%s", hand_mode ? "PAN / INSPECT" :
@@ -2641,22 +2735,23 @@ int main(int argc, char** argv) {
                         report_tab == ReportTab::overview);
             draw_button(renderer, report_power_tab, "POWER",
                         report_tab == ReportTab::power);
+            draw_button(renderer, report_issues_tab, "ISSUES",
+                        report_tab == ReportTab::issues);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, reports_panel.x + 620,
                 reports_panel.y + 14, "TAB SWITCH  |  ESC CLOSE");
 
             if (report_tab == ReportTab::power) {
                 draw_power_report(renderer, world);
+            } else if (report_tab == ReportTab::issues) {
+                draw_issues_report(renderer, world);
             } else {
 
             const auto card = [&](SDL_FRect rect, Color accent) {
                 fill(renderer, rect, {43, 65, 65});
                 fill(renderer, {rect.x, rect.y, 3, rect.h}, accent);
             };
-            const int issue_count = (state.congested_roads > 0) +
-                (state.bad_roads > 0) + (state.noise_affected_homes > 0) +
-                (state.abandoned_buildings > 0) + (state.city_score < 30);
-            const auto traffic = traffic_tip(world);
+            const int issue_count = static_cast<int>(city_issues(world).size());
             card({95, 162, 230, 95}, score_color);
             card({335, 162, 590, 95}, issue_count == 0
                 ? Color{105, 184, 114} : Color{218, 174, 103});
@@ -2667,27 +2762,16 @@ int main(int argc, char** argv) {
             fill(renderer, {109, 216, 195, 12}, {66, 82, 83});
             fill(renderer, {109, 216, 1.95f * state.city_score, 12}, score_color);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, 350, 173, "CURRENT ISSUES");
+            SDL_RenderDebugText(renderer, 350, 173, "CITY STATUS");
             SDL_SetRenderDrawColor(renderer, issue_count == 0 ? 142 : 255,
                 issue_count == 0 ? 207 : 220, issue_count == 0 ? 151 : 166, 255);
             if (issue_count == 0)
                 SDL_RenderDebugText(renderer, 350, 195, "All clear. Community health is stable.");
             else {
-                if (traffic)
-                    SDL_RenderDebugTextFormat(renderer, 350, 194,
-                        "Hotspot (%d,%d)  traffic %d/%d  |  %d jammed roads",
-                        traffic->x + 1, traffic->y + 1, traffic->flow,
-                        traffic->capacity, state.congested_roads);
-                else SDL_RenderDebugTextFormat(renderer, 350, 194,
-                    "Traffic %d  |  Worn roads %d  |  Noise homes %d",
-                    state.congested_roads, state.bad_roads, state.noise_affected_homes);
-                SDL_RenderDebugTextFormat(renderer, 350, 216,
-                    "Worn %d  |  Noise homes %d  |  Abandoned %d  |  Low score %s",
-                    state.bad_roads, state.noise_affected_homes,
-                    state.abandoned_buildings, state.city_score < 30 ? "YES" : "NO");
-                if (traffic)
-                    SDL_RenderDebugTextFormat(renderer, 350, 238,
-                        "Try: %s", traffic->action);
+                SDL_RenderDebugTextFormat(renderer, 350, 195,
+                    "%d active issues need attention.", issue_count);
+                SDL_RenderDebugText(renderer, 350, 219,
+                    "Open the ISSUES tab for details and suggestions.");
             }
 
             fill(renderer, {95, 272, 830, 133}, {36, 55, 55});

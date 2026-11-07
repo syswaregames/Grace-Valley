@@ -15,7 +15,8 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
 | Inspect power supply | Open Reports, then click **Power** or press `Tab` to compare capacity, current consumption, projected need, and surplus after all zones develop |
-| Follow traffic advice | Click the top **Traffic** alert to open Reports; it identifies the busiest road and suggests a route or maintenance fix |
+| Review city issues | Open Reports and select **Issues** to see active alerts and suggested fixes |
+| Follow traffic advice | Click the top **Traffic** alert to open the Issues tab; it identifies the busiest road and suggests a route or maintenance fix |
 | Read zone demand at a glance | The top HUD keeps compact Residential (`R`), Commercial (`C`), and Industrial (`I`) bars visible; hover for a management tip |
 | Review financial trends | Open Reports to see a 12-week funds chart and income-versus-expenses chart |
 | Save the current town | Click **Save** at the top or press `F5` |
@@ -31,7 +32,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Build a bridge | With Road selected, click or drag from an existing road across water |
 | Upgrade a busy road | Click **Upgrade Road** in the sidebar or press `U`, then click road tiles; `Shift` + left click is a shortcut |
 | Paint zoning areas | Select residential (`2`), commercial (`3`), or industrial (`4`); hold left click and drag |
-| Start the weekly simulation / pause or resume | Click **Play/Pause** or press `Space` |
+| Start the weekly simulation / pause or resume | Click the play/pause symbol or press `Space` |
 | Open the budget | Click **Budget** or press `B` (click a policy to select it) |
 | Get financial help | When projected cash runway falls to about three weeks, the city pauses and the advisor recommends budget changes |
 | Borrow emergency funds | Click **Borrow 200** in Budget or the advisor; one loan may be active at a time |
@@ -49,7 +50,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Inspect a map item | Hover without moving for about 1.2 seconds |
 | Close a menu / quit | `Esc` closes an open menu; press it again to quit |
 
-New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking **Play** or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. Buildings cannot occupy the pond, but roads can cross it as bridges; building in woods clears them for 10 extra funds. The top bar keeps week, finances, City Score, and the primary controls visible. The right toolbar keeps the build tools visible. Click **Reports** or press `I` to see demand, community health, roads, services, and budget summaries when you need them. Placement guidance stays in the slim footer; invalid or unaffordable placements show a red preview.
+New games begin in **Setup** with the weekly clock stopped. Lay out roads and zones, build a power plant, choose civic facilities, and set the budget before clicking the play symbol or pressing `Space`. Zoning and construction still cost funds during setup. Extend roads from the starting chapel. Buildings need a connected road beside them. If removing a road cuts off a district, affected tiles get red outlines and connected homes lose capacity until the route is repaired. The chapel's starting road cannot be removed. Buildings cannot occupy the pond, but roads can cross it as bridges; building in woods clears them for 10 extra funds. The top bar keeps week, finances, City Score, and the primary controls visible. The right toolbar keeps the build tools visible. Click **Reports** or press `I` to see demand, community health, roads, services, and budget summaries when you need them. Placement guidance stays in the slim footer; invalid or unaffordable placements show a red preview.
 
 ### Save and load
 
