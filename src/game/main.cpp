@@ -44,6 +44,7 @@ constexpr SDL_FRect options_button{881, 17, 82, 42};
 constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
+constexpr SDL_FRect traffic_alert_button{804, 72, 180, 24};
 constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
 constexpr SDL_FRect advisor_loan_button{282, 468, 190, 44};
 constexpr SDL_FRect advisor_budget_button{510, 468, 190, 44};
@@ -709,6 +710,55 @@ std::string event_message(grace::EventError error, grace::EventKind kind,
     }
 }
 
+struct TrafficTip {
+    int x = 0;
+    int y = 0;
+    int flow = 0;
+    int capacity = 0;
+    const char* action = "Add a second connected road to split trips.";
+};
+
+std::optional<TrafficTip> traffic_tip(const grace::World& world) {
+    std::optional<TrafficTip> worst;
+    int worst_pressure = 0;
+    for (int y = 0; y < grace::World::height; ++y) {
+        for (int x = 0; x < grace::World::width; ++x) {
+            if (world.tile(x, y) != grace::Tile::road) continue;
+            const int flow = world.traffic_at(x, y);
+            const int capacity = world.road_capacity(x, y);
+            if (capacity <= 0 || flow <= capacity) continue;
+            const int pressure = flow * 100 / capacity;
+            if (pressure <= worst_pressure) continue;
+            worst_pressure = pressure;
+            worst = TrafficTip{x, y, flow, capacity};
+        }
+    }
+    if (!worst) return worst;
+    if (world.road_condition(worst->x, worst->y) < 60) {
+        worst->action = "Fund road care in Budget to restore this road's capacity.";
+        return worst;
+    }
+    bool near_homes = false;
+    bool near_jobs = false;
+    bool near_industry = false;
+    for (int dy = -3; dy <= 3; ++dy) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            const auto tile = world.tile(worst->x + dx, worst->y + dy);
+            near_homes |= tile == grace::Tile::home ||
+                tile == grace::Tile::residential_zone;
+            near_jobs |= tile == grace::Tile::commercial ||
+                tile == grace::Tile::industrial;
+            near_industry |= tile == grace::Tile::industrial ||
+                tile == grace::Tile::industrial_zone;
+        }
+    }
+    if (near_homes && near_jobs)
+        worst->action = "Connect a second route between nearby homes and jobs.";
+    else if (near_industry)
+        worst->action = "Build a parallel route around the workshop district.";
+    return worst;
+}
+
 std::string town_advice(const grace::World& world) {
     const auto state = world.snapshot();
     if (state.bankrupt) return "BANKRUPT: the treasury fell below zero. Press Backspace to start again.";
@@ -721,14 +771,15 @@ std::string town_advice(const grace::World& world) {
         return "No power: build a power plant (8) beside a connected road to grow zones.";
     if (state.unpowered_buildings > 0)
         return "Power shortage: add a connected plant. Amber lightning marks unpowered tiles.";
+    if (const auto traffic = traffic_tip(world))
+        return "Traffic at (" + std::to_string(traffic->x + 1) + "," +
+            std::to_string(traffic->y + 1) + "): " + traffic->action;
     if (state.noise_affected_homes > 0)
         return "Noise alert: workshops affect " +
             std::to_string(state.noise_affected_homes) +
             " homes. Move housing or industry farther apart.";
     if (state.bad_roads > 0)
         return "Roads are deteriorating. Open Budget (B) and restore road maintenance funding.";
-    if (state.congested_roads > 0)
-        return "Traffic alert: amber/red roads are overloaded. Press U to upgrade roads or fund maintenance (B).";
     int homes = 0;
     for (int y = 0; y < grace::World::height; ++y)
         for (int x = 0; x < grace::World::width; ++x)
@@ -1120,7 +1171,7 @@ int main(int argc, char** argv) {
     };
     record_finances();
     std::string feedback = capture_traffic
-        ? "Traffic alert: upgrade amber roads to keep commutes moving."
+        ? "Traffic alert: try a second route. Click the top alert for a location and tip."
         : world.snapshot().bankrupt
         ? "BANKRUPT: review the budget or start a new town."
         : "Setup: build a power plant (8) by a connected road, then press Space to start.";
@@ -1660,6 +1711,14 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (event.button.button == SDL_BUTTON_LEFT &&
+                    world.snapshot().congested_roads > 0 &&
+                    contains(traffic_alert_button, mx, my)) {
+                    reports_open = true;
+                    budget_open = false;
+                    options_open = false;
+                    continue;
+                }
+                if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(save_button, mx, my)) {
                     save_game();
                     continue;
@@ -1965,46 +2024,24 @@ int main(int argc, char** argv) {
         SDL_RenderDebugText(renderer, 318, 76,
             state.bankrupt
                 ? "BANKRUPT  |  NEW TOWN OR VIEW BUDGET  |  BACKSPACE RESTARTS"
-                : "1-9 TOOLS  |  DRAG BUILD  |  RIGHT DRAG / WASD PAN  |  I REPORTS");
-        if ((state.congested_roads > 0 || state.noise_affected_homes > 0 ||
-             state.bad_roads > 0 || state.abandoned_buildings > 0 ||
-             state.city_score < 30) &&
-            !state.bankrupt) {
-            SDL_SetRenderDrawColor(renderer,
-                state.noise_affected_homes > 0 ? 222 : 249,
-                state.noise_affected_homes > 0 ? 151 : 161,
-                state.noise_affected_homes > 0 ? 211 : 106, 255);
-            if (state.congested_roads > 0 && state.noise_affected_homes > 0 &&
-                state.bad_roads > 0)
+                : "1-9 TOOLS  |  RIGHT DRAG / WASD PAN  |  I REPORTS");
+        if (!state.bankrupt) {
+            SDL_SetRenderDrawColor(renderer, 249, 176, 116, 255);
+            if (state.congested_roads > 0)
                 SDL_RenderDebugTextFormat(renderer, 804, 76,
-                    "JAM %d BAD %d NOISE %d", state.congested_roads,
-                    state.bad_roads, state.noise_affected_homes);
+                    "TRAFFIC %d | REPORTS", state.congested_roads);
+            else if (state.noise_affected_homes > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "NOISE %d HOMES", state.noise_affected_homes);
+            else if (state.bad_roads > 0)
+                SDL_RenderDebugTextFormat(renderer, 804, 76,
+                    "BAD ROADS %d", state.bad_roads);
             else if (state.abandoned_buildings > 0)
                 SDL_RenderDebugTextFormat(renderer, 804, 76,
                     "ABANDONED %d", state.abandoned_buildings);
             else if (state.city_score < 30)
                 SDL_RenderDebugText(renderer, 804, 76, "CITY SCORE CRITICAL");
-            else if (state.noise_affected_homes > 0 && state.bad_roads > 0)
-                SDL_RenderDebugTextFormat(renderer, 804, 76,
-                    "BAD ROADS %d  NOISE %d", state.bad_roads,
-                    state.noise_affected_homes);
-            else if (state.congested_roads > 0 && state.bad_roads > 0)
-                SDL_RenderDebugTextFormat(renderer, 804, 76,
-                    "JAM %d  BAD ROADS %d", state.congested_roads,
-                    state.bad_roads);
-            else if (state.congested_roads > 0 && state.noise_affected_homes > 0)
-                SDL_RenderDebugTextFormat(renderer, 836, 76,
-                    "TRAFFIC %d  NOISE %d", state.congested_roads,
-                    state.noise_affected_homes);
-            else if (state.noise_affected_homes > 0)
-                SDL_RenderDebugTextFormat(renderer, 836, 76,
-                    "NOISE ALERT %d HOMES", state.noise_affected_homes);
-            else if (state.congested_roads > 0) SDL_RenderDebugTextFormat(renderer, 836, 76,
-                    "TRAFFIC ALERT %d", state.congested_roads);
-            else SDL_RenderDebugTextFormat(renderer, 836, 76,
-                    "BAD ROADS %d", state.bad_roads);
-        }
-        const SDL_Rect map_clip{margin, header, map_width, map_height};
+        }        const SDL_Rect map_clip{margin, header, map_width, map_height};
         SDL_SetRenderClipRect(renderer, &map_clip);
         for (int y = 0; y < grace::World::height; ++y)
             for (int x = 0; x < grace::World::width; ++x)
@@ -2408,6 +2445,7 @@ int main(int argc, char** argv) {
             const int issue_count = (state.congested_roads > 0) +
                 (state.bad_roads > 0) + (state.noise_affected_homes > 0) +
                 (state.abandoned_buildings > 0) + (state.city_score < 30);
+            const auto traffic = traffic_tip(world);
             card({95, 162, 230, 95}, score_color);
             card({335, 162, 590, 95}, issue_count == 0
                 ? Color{105, 184, 114} : Color{218, 174, 103});
@@ -2424,12 +2462,21 @@ int main(int argc, char** argv) {
             if (issue_count == 0)
                 SDL_RenderDebugText(renderer, 350, 195, "All clear. Community health is stable.");
             else {
-                SDL_RenderDebugTextFormat(renderer, 350, 194,
-                    "Traffic %d  |  Worn roads %d  |  Noise affected homes %d",
+                if (traffic)
+                    SDL_RenderDebugTextFormat(renderer, 350, 194,
+                        "Hotspot (%d,%d)  traffic %d/%d  |  %d jammed roads",
+                        traffic->x + 1, traffic->y + 1, traffic->flow,
+                        traffic->capacity, state.congested_roads);
+                else SDL_RenderDebugTextFormat(renderer, 350, 194,
+                    "Traffic %d  |  Worn roads %d  |  Noise homes %d",
                     state.congested_roads, state.bad_roads, state.noise_affected_homes);
                 SDL_RenderDebugTextFormat(renderer, 350, 216,
-                    "Abandoned buildings %d  |  Critical City Score %s",
+                    "Worn %d  |  Noise homes %d  |  Abandoned %d  |  Low score %s",
+                    state.bad_roads, state.noise_affected_homes,
                     state.abandoned_buildings, state.city_score < 30 ? "YES" : "NO");
+                if (traffic)
+                    SDL_RenderDebugTextFormat(renderer, 350, 238,
+                        "Try: %s", traffic->action);
             }
 
             fill(renderer, {95, 272, 830, 133}, {36, 55, 55});
