@@ -10,7 +10,8 @@ namespace grace {
 enum class Tile : std::uint8_t {
     meadow, road, home, chapel, pantry, park,
     residential_zone, commercial_zone, industrial_zone, commercial, industrial,
-    power_plant, abandoned_home, abandoned_commercial, abandoned_industrial
+    power_plant, abandoned_home, abandoned_commercial, abandoned_industrial,
+    solar_plant, wind_plant
 };
 enum class Terrain : std::uint8_t { grass, woods, water };
 enum class PlacementError : std::uint8_t {
@@ -148,6 +149,8 @@ public:
     bool save(std::ostream& output) const;
     static std::optional<World> load(std::istream& input);
     static int cost(Tile type);
+    static int power_output(Tile type);
+    static int power_upkeep(Tile type);
     int cost_at(int x, int y, Tile type) const;
     static const char* name(Tile type);
 

@@ -81,6 +81,10 @@ if(GRACE_BUILD_TESTS)
     add_test(NAME grace_power_ui_smoke COMMAND grace-valley --power-smoke)
     set_tests_properties(grace_power_ui_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")
+    add_test(NAME grace_views_ui_smoke
+      COMMAND grace-valley --views-smoke "${CMAKE_CURRENT_BINARY_DIR}/views-smoke.sav")
+    set_tests_properties(grace_views_ui_smoke PROPERTIES
+      ENVIRONMENT "SDL_VIDEODRIVER=dummy")
     add_test(NAME grace_traffic_ui_smoke COMMAND grace-valley --traffic-smoke)
     set_tests_properties(grace_traffic_ui_smoke PROPERTIES
       ENVIRONMENT "SDL_VIDEODRIVER=dummy")

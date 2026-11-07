@@ -17,7 +17,6 @@ constexpr int anchor_x = 12;
 constexpr int anchor_y = 8;
 constexpr int legacy_width = 24;
 constexpr int legacy_height = 16;
-constexpr int plant_output = 12;
 constexpr std::array<int, 4> road_capacities{6, 14, 24, 36};
 constexpr std::array<int, 4> road_upgrade_costs{0, 20, 35, 55};
 constexpr std::array<int, 4> road_upkeep{0, 1, 3, 6};
@@ -222,9 +221,9 @@ void World::rebuild_power() {
     int available = 0;
     for (int y = 0; y < height; ++y)
         for (int x = 0; x < width; ++x)
-            if (tile(x, y) == Tile::power_plant && has_road(x, y)) {
+            if (power_output(tile(x, y)) > 0 && has_road(x, y)) {
                 powered_[index(x, y)] = true;
-                available += plant_output;
+                available += power_output(tile(x, y));
             }
     // Existing buildings take priority. Vacant zones show whether spare power
     // can support their next building without reserving it in advance.
@@ -403,6 +402,26 @@ int World::cost(Tile type) {
     case Tile::commercial_zone: return 12;
     case Tile::industrial_zone: return 15;
     case Tile::power_plant: return 40;
+    case Tile::solar_plant: return 100;
+    case Tile::wind_plant: return 75;
+    default: return 0;
+    }
+}
+
+int World::power_output(Tile type) {
+    switch (type) {
+    case Tile::power_plant: return 12;
+    case Tile::solar_plant: return 8;
+    case Tile::wind_plant: return 6;
+    default: return 0;
+    }
+}
+
+int World::power_upkeep(Tile type) {
+    switch (type) {
+    case Tile::power_plant: return 6;
+    case Tile::solar_plant: return 2;
+    case Tile::wind_plant: return 3;
     default: return 0;
     }
 }
@@ -426,6 +445,8 @@ const char* World::name(Tile type) {
     case Tile::commercial: return "Shop";
     case Tile::industrial: return "Workshop";
     case Tile::power_plant: return "Power plant";
+    case Tile::solar_plant: return "Solar plant";
+    case Tile::wind_plant: return "Wind turbine";
     case Tile::abandoned_home: return "Abandoned home";
     case Tile::abandoned_commercial: return "Abandoned shop";
     case Tile::abandoned_industrial: return "Abandoned workshop";
@@ -560,7 +581,7 @@ Snapshot World::evaluate() const {
     int all_workshops = 0;
     int chapels = 0;
     int pantries = 0;
-    int plants = 0;
+    int power_building_upkeep = 0;
     int road_upgrade_upkeep = 0;
     int total_road_condition = 0;
     int total_belonging = 0;
@@ -619,8 +640,10 @@ Snapshot World::evaluate() const {
                 ++next.abandoned_buildings;
                 break;
             case Tile::power_plant:
-                ++plants;
-                if (powered_[index(x, y)]) next.power_capacity += plant_output;
+            case Tile::solar_plant:
+            case Tile::wind_plant:
+                power_building_upkeep += power_upkeep(tile(x, y));
+                if (powered_[index(x, y)]) next.power_capacity += power_output(tile(x, y));
                 break;
             default: break;
             }
@@ -645,7 +668,7 @@ Snapshot World::evaluate() const {
     next.building_upkeep = homes +
                            all_shops * 2 + all_workshops * 3 +
                            next.abandoned_buildings;
-    next.building_upkeep += plants * 6;
+    next.building_upkeep += power_building_upkeep;
     const int base_services = chapels * 4 + pantries * 3 + parks;
     next.service_upkeep = next.service_budget == ServiceBudget::lean
         ? (base_services + 1) / 2 : next.service_budget == ServiceBudget::generous
@@ -894,7 +917,7 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 6\n";
+    output << "GRACE_VALLEY_WORLD 7\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
@@ -926,7 +949,7 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version < 1 || version > 6))
+        (version < 1 || version > 7))
         return std::nullopt;
     World result;
     int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
@@ -1001,7 +1024,7 @@ std::optional<World> World::load(std::istream& input) {
             if (!(input >> tile >> terrain >> upgraded) ||
                 (version >= 3 && !(input >> condition)) ||
                 !(input >> belonging >> care) ||
-                tile < 0 || tile > static_cast<int>(Tile::abandoned_industrial) ||
+                tile < 0 || tile > static_cast<int>(version >= 7 ? Tile::wind_plant : Tile::abandoned_industrial) ||
                 terrain < 0 || terrain > static_cast<int>(Terrain::water) ||
                 upgraded < 0 || upgraded > (version == 1 ? 1 : 3) ||
                 condition < 0 || condition > 100 ||

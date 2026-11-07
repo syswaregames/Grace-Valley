@@ -64,6 +64,8 @@ constexpr SDL_FRect budget_choice(int row, int choice) {
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect hand_button{static_cast<float>(sidebar_x + 8), 466, 82, 35};
 constexpr SDL_FRect bulldozer_button{static_cast<float>(sidebar_x + 96), 466, 84, 35};
+constexpr SDL_FRect power_menu_button{static_cast<float>(sidebar_x + 8), 665, 172, 30};
+constexpr SDL_FRect overlay_menu_button{static_cast<float>(sidebar_x + 8), 703, 172, 30};
 constexpr SDL_FRect tool_button(int index) {
     return {static_cast<float>(sidebar_x + 8 + (index % 2) * 88),
             static_cast<float>(140 + (index / 2) * 82), 82, 76};
@@ -124,6 +126,7 @@ struct Color { Uint8 r, g, b; };
 
 struct FinanceSample { int week, funds, income, upkeep; };
 enum class ReportTab { overview, power, issues };
+enum class MapOverlay { none, power, traffic, pollution, noise, services };
 
 struct CalendarDate { const char* month; int day, year; };
 
@@ -368,7 +371,7 @@ enum class ToolCategory { roads, zones, civic };
 ToolCategory category_for(grace::Tile type) {
     if (type == grace::Tile::road) return ToolCategory::roads;
     if (type == grace::Tile::chapel || type == grace::Tile::pantry ||
-        type == grace::Tile::park || type == grace::Tile::power_plant)
+        type == grace::Tile::park || grace::World::power_output(type) > 0)
         return ToolCategory::civic;
     return ToolCategory::zones;
 }
@@ -383,6 +386,8 @@ const char* tool_label(grace::Tile type) {
     case grace::Tile::pantry: return "PANTRY";
     case grace::Tile::park: return "PARK";
     case grace::Tile::power_plant: return "POWER";
+    case grace::Tile::solar_plant: return "SOLAR";
+    case grace::Tile::wind_plant: return "WIND";
     default: return "TOOL";
     }
 }
@@ -447,6 +452,18 @@ void draw_tool_icon(SDL_Renderer* renderer, grace::Tile type, float x, float y,
         shape(20, 4, 5, 13, {179, 187, 177});
         shape(14, 17, 7, 9, {244, 208, 93});
         break;
+    case grace::Tile::solar_plant:
+        shape(3, 10, 28, 17, {57, 98, 126});
+        shape(5, 12, 24, 13, {80, 151, 174});
+        shape(16, 12, 2, 13, {45, 83, 107});
+        shape(5, 18, 24, 2, {45, 83, 107});
+        break;
+    case grace::Tile::wind_plant:
+        shape(15, 11, 4, 19, {230, 230, 217});
+        shape(16, 1, 3, 13, {230, 230, 217});
+        shape(18, 12, 13, 3, {230, 230, 217});
+        shape(4, 15, 13, 3, {230, 230, 217});
+        break;
     default: break;
     }
     shape(23, 21, 11, 11, {34, 51, 55});
@@ -475,6 +492,86 @@ CoverageMask coverage_mask(const grace::World& world, grace::Tile service) {
         }
     }
     return mask;
+}
+
+const char* overlay_legend(MapOverlay overlay) {
+    switch (overlay) {
+    case MapOverlay::power: return "POWER: green supplied or ready, red no power, blue grid; zones share spare power.";
+    case MapOverlay::traffic: return "TRAFFIC: green within capacity, amber overloaded, red severe.";
+    case MapOverlay::pollution: return "POLLUTION: amber marks exposure near fuel plants and workshops.";
+    case MapOverlay::noise: return "NOISE: purple marks exposure near fuel plants and workshops.";
+    case MapOverlay::services: return "SERVICES: green both services, gold one, red homes missing a service.";
+    default: return "";
+    }
+}
+
+void draw_map_overlay(SDL_Renderer* renderer, const grace::World& world,
+                      const Camera& camera, MapOverlay overlay) {
+    if (overlay == MapOverlay::none) return;
+    const bool grid_has_power = world.snapshot().power_capacity > 0;
+    CoverageMask exposure{};
+    CoverageMask chapel{};
+    CoverageMask pantry{};
+    if (overlay == MapOverlay::services) {
+        chapel = coverage_mask(world, grace::Tile::chapel);
+        pantry = coverage_mask(world, grace::Tile::pantry);
+    }
+    if (overlay == MapOverlay::pollution || overlay == MapOverlay::noise) {
+        for (int y = 0; y < grace::World::height; ++y)
+            for (int x = 0; x < grace::World::width; ++x) {
+                const auto tile = world.tile(x, y);
+                if ((tile != grace::Tile::power_plant && tile != grace::Tile::industrial) ||
+                    !world.is_connected(x, y)) continue;
+                for (int dy = -4; dy <= 4; ++dy)
+                    for (int dx = -4; dx <= 4; ++dx) {
+                        const int px = x + dx, py = y + dy;
+                        if (std::abs(dx) + std::abs(dy) <= 4 && px >= 0 &&
+                            py >= 0 && px < grace::World::width && py < grace::World::height)
+                            exposure[static_cast<std::size_t>(py * grace::World::width + px)] = true;
+                    }
+            }
+    }
+    for (int y = 0; y < grace::World::height; ++y)
+        for (int x = 0; x < grace::World::width; ++x) {
+            const auto tile = world.tile(x, y);
+            const auto i = static_cast<std::size_t>(y * grace::World::width + x);
+            Color color{};
+            bool show = false;
+            if (overlay == MapOverlay::power) {
+                if (tile == grace::Tile::road && world.is_connected(x, y) &&
+                    grid_has_power) {
+                    color = {91, 173, 187}; show = true;
+                } else if (tile == grace::Tile::home || tile == grace::Tile::commercial ||
+                    tile == grace::Tile::industrial || tile == grace::Tile::residential_zone ||
+                    tile == grace::Tile::commercial_zone || tile == grace::Tile::industrial_zone ||
+                    grace::World::power_output(tile) > 0) {
+                    color = world.is_powered(x, y) ? Color{70, 190, 121} : Color{220, 80, 78};
+                    show = true;
+                }
+            } else if (overlay == MapOverlay::traffic && tile == grace::Tile::road) {
+                const int flow = world.traffic_at(x, y), cap = world.road_capacity(x, y);
+                color = flow > cap * 2 ? Color{220, 80, 78} :
+                    flow > cap ? Color{240, 170, 65} : Color{70, 190, 121};
+                show = true;
+            } else if ((overlay == MapOverlay::pollution || overlay == MapOverlay::noise) && exposure[i]) {
+                color = overlay == MapOverlay::pollution ? Color{179, 120, 65} : Color{180, 92, 175};
+                show = true;
+            } else if (overlay == MapOverlay::services) {
+                if (tile == grace::Tile::home &&
+                    (!world.home_has_service(x, y, grace::Tile::chapel) ||
+                     !world.home_has_service(x, y, grace::Tile::pantry))) {
+                    color = {220, 80, 78}; show = true;
+                } else if (chapel[i] || pantry[i]) {
+                    color = chapel[i] && pantry[i] ? Color{70, 190, 121} : Color{240, 170, 65};
+                    show = true;
+                }
+            }
+            if (show) {
+                auto rect = camera.tile_rect(x, y);
+                rect.x += 1; rect.y += 1; rect.w -= 2; rect.h -= 2;
+                tint(renderer, rect, color, 105);
+            }
+        }
 }
 
 void draw_coverage(SDL_Renderer* renderer, const grace::World& world,
@@ -771,6 +868,21 @@ void draw_tile(SDL_Renderer* renderer, const grace::World& world, int x, int y,
         shape(25, 3, 6, 20, {176, 186, 181});
         shape(17, 22, 7, 9, {245, 208, 86});
         break;
+    case grace::Tile::solar_plant:
+        shape(4, 13, 32, 19, {59, 96, 125});
+        shape(6, 15, 28, 15, {70, 139, 164});
+        shape(18, 15, 2, 15, {38, 76, 103});
+        shape(6, 22, 28, 2, {38, 76, 103});
+        shape(8, 32, 4, 4, {91, 87, 73});
+        shape(28, 32, 4, 4, {91, 87, 73});
+        break;
+    case grace::Tile::wind_plant:
+        shape(18, 12, 4, 24, {223, 225, 211});
+        shape(17, 5, 3, 10, {239, 239, 224});
+        shape(20, 13, 15, 3, {239, 239, 224});
+        shape(8, 15, 11, 3, {239, 239, 224});
+        shape(17, 12, 6, 6, {111, 143, 151});
+        break;
     default: break;
     }
     const bool pending_zone = type == grace::Tile::residential_zone ||
@@ -903,7 +1015,7 @@ std::vector<CityIssue> city_issues(const grace::World& world) {
                 "Check road connections to the plant and affected buildings. Open the Power report."});
     if (s.noise_affected_homes > 0)
         issues.push_back({"NOISE AND POLLUTION", std::to_string(s.noise_affected_homes) + " homes are affected.",
-            "Move housing farther from power plants and workshops; check homes for the N marker."});
+            "Move housing away from fuel plants and workshops; check homes for the N marker."});
     if (s.abandoned_buildings > 0 || s.city_score < 30)
         issues.push_back({"CITY WELLBEING", std::to_string(s.abandoned_buildings) + " buildings abandoned; score " +
             std::to_string(s.city_score) + "/100.",
@@ -968,7 +1080,7 @@ std::string town_advice(const grace::World& world) {
     if (state.noise_affected_homes > 0)
         return "Noise alert: workshops affect " +
             std::to_string(state.noise_affected_homes) +
-            " homes. Move housing away from workshops and power plants.";
+            " homes. Move housing away from workshops and fuel plants.";
     if (state.bad_roads > 0)
         return "Roads are deteriorating. Open Budget (B) and restore road maintenance funding.";
     int homes = 0;
@@ -1097,10 +1209,14 @@ MapTooltip map_tooltip(const grace::World& world, int x, int y) {
         add("Improves nearby wellbeing and housing demand");
         break;
     case grace::Tile::power_plant:
+    case grace::Tile::solar_plant:
+    case grace::Tile::wind_plant:
         add("Supply " + std::to_string(state.power_capacity) +
             " kW | Building demand " + std::to_string(state.power_demand) + " kW");
         add(world.is_connected(x, y) ? "Connected to road power grid" : "Disconnected from grid");
-        add("12 kW | Noise and pollution affect nearby homes");
+        add(std::to_string(grace::World::power_output(tile)) + " kW | Upkeep " +
+            std::to_string(grace::World::power_upkeep(tile)) + "/week | " +
+            (tile == grace::Tile::power_plant ? "Polluting" : "Clean"));
         break;
     case grace::Tile::abandoned_home:
     case grace::Tile::abandoned_commercial:
@@ -1239,11 +1355,14 @@ int main(int argc, char** argv) {
     const bool power_smoke = argc > 1 && std::string(argv[1]) == "--power-smoke";
     const bool traffic_smoke = argc > 1 && std::string(argv[1]) == "--traffic-smoke";
     const bool save_smoke = argc > 2 && std::string(argv[1]) == "--save-smoke";
+    const bool views_smoke = argc > 2 && std::string(argv[1]) == "--views-smoke";
     const bool bankrupt_smoke = argc > 1 && std::string(argv[1]) == "--bankrupt-smoke";
     const bool capture_roads = argc > 2 && std::string(argv[1]) == "--capture-roads";
     const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_reports = argc > 2 && std::string(argv[1]) == "--capture-reports";
+    const bool capture_sources = argc > 2 && std::string(argv[1]) == "--capture-sources";
+    const bool capture_views = argc > 2 && std::string(argv[1]) == "--capture-views";
     const bool capture_annual = argc > 2 && std::string(argv[1]) == "--capture-annual";
     const bool capture_power_surplus = argc > 2 && std::string(argv[1]) == "--capture-power-surplus";
     const bool capture_power = capture_power_surplus ||
@@ -1251,12 +1370,12 @@ int main(int argc, char** argv) {
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_issues = argc > 2 && std::string(argv[1]) == "--capture-issues";
-    const bool capture_traffic = capture_issues ||
+    const bool capture_traffic = capture_issues || capture_views ||
         (argc > 2 && std::string(argv[1]) == "--capture-traffic");
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
-         capture_budget || capture_reports || capture_annual || capture_power || capture_options || capture_zones || capture_traffic ||
+         capture_budget || capture_reports || capture_sources || capture_annual || capture_power || capture_options || capture_zones || capture_traffic ||
          capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
@@ -1277,7 +1396,7 @@ int main(int argc, char** argv) {
                                      SDL_LOGICAL_PRESENTATION_LETTERBOX);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
     std::filesystem::path save_file;
-    if (save_smoke) save_file = std::filesystem::path(argv[2]);
+    if (save_smoke || views_smoke) save_file = std::filesystem::path(argv[2]);
     else if (char* preference_path = SDL_GetPrefPath("SyswareGames", "GraceValley")) {
         save_file = std::filesystem::u8path(preference_path) / "grace-valley.sav";
         SDL_free(preference_path);
@@ -1368,6 +1487,9 @@ int main(int argc, char** argv) {
     ReportTab report_tab = capture_issues ? ReportTab::issues :
         capture_power ? ReportTab::power : ReportTab::overview;
     bool options_open = capture_options;
+    bool power_menu_open = capture_sources;
+    bool overlay_menu_open = capture_views;
+    MapOverlay map_overlay = capture_views ? MapOverlay::pollution : MapOverlay::none;
     bool upgrade_mode = false;
     bool bulldozer_mode = false;
     bool hand_mode = false;
@@ -1419,6 +1541,9 @@ int main(int argc, char** argv) {
         reports_open = false;
         report_tab = ReportTab::overview;
         options_open = false;
+        power_menu_open = false;
+        overlay_menu_open = false;
+        map_overlay = MapOverlay::none;
         upgrade_mode = false;
         bulldozer_mode = false;
         hand_mode = false;
@@ -1588,9 +1713,10 @@ int main(int argc, char** argv) {
                     std::abs(restored_camera.offset_x) < 100000.0f &&
                     std::abs(restored_camera.offset_y) < 100000.0f;
                 valid = valid && saved_tool >= 0 &&
-                    saved_tool <= static_cast<int>(grace::Tile::power_plant);
+                    saved_tool <= static_cast<int>(grace::Tile::wind_plant);
                 const auto tool = static_cast<grace::Tile>(saved_tool);
-                valid = valid && std::find(tools.begin(), tools.end(), tool) != tools.end() &&
+                valid = valid && (std::find(tools.begin(), tools.end(), tool) != tools.end() ||
+                    tool == grace::Tile::solar_plant || tool == grace::Tile::wind_plant) &&
                     (!saved_upgrade || tool == grace::Tile::road);
                 auto restored = valid ? grace::World::load(input) : std::nullopt;
                 if (restored) {
@@ -1619,6 +1745,9 @@ int main(int argc, char** argv) {
                     reports_open = false;
                     report_tab = ReportTab::overview;
                     options_open = false;
+                    power_menu_open = false;
+                    overlay_menu_open = false;
+                    map_overlay = MapOverlay::none;
                     dragging = false;
                     painting_tiles = false;
                     last_week = SDL_GetTicks();
@@ -1829,6 +1958,24 @@ int main(int argc, char** argv) {
         step.key.key = SDLK_N;
         SDL_PushEvent(&step);
     }
+    if (views_smoke) {
+        const auto click = [](SDL_FRect rect) {
+            SDL_Event event{};
+            event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            event.button.button = SDL_BUTTON_LEFT;
+            event.button.x = rect.x + rect.w / 2;
+            event.button.y = rect.y + rect.h / 2;
+            SDL_PushEvent(&event);
+        };
+        click(power_menu_button);
+        click(option_button(1));
+        click({margin + 11.0f * base_cell, header + 9.0f * base_cell,
+               base_cell, base_cell});
+        click(save_button);
+        click(load_button);
+        click(overlay_menu_button);
+        click(option_button(3));
+    }
 
     while (running) {
         SDL_Event event;
@@ -1859,6 +2006,10 @@ int main(int argc, char** argv) {
                     else if (budget_open) budget_open = false;
                     else if (reports_open) reports_open = false;
                     else if (options_open) options_open = false;
+                    else if (power_menu_open || overlay_menu_open) {
+                        power_menu_open = false;
+                        overlay_menu_open = false;
+                    }
                     else if (!hand_mode && !world.snapshot().bankrupt) {
                         hand_mode = true;
                         bulldozer_mode = false;
@@ -1923,6 +2074,8 @@ int main(int argc, char** argv) {
                     bulldozer_mode = false;
                     hand_mode = false;
                     options_open = false;
+                    power_menu_open = false;
+                    overlay_menu_open = false;
                     painting_tiles = false;
                 }
                 if (event.key.key == SDLK_9) {
@@ -1931,6 +2084,8 @@ int main(int argc, char** argv) {
                     upgrade_mode = false;
                     painting_tiles = false;
                     options_open = false;
+                    power_menu_open = false;
+                    overlay_menu_open = false;
                     feedback = bulldozer_mode ? "Bulldozer selected. Click or drag to clear roads, zones, and buildings." : "Bulldozer off.";
                     feedback_until = SDL_GetTicks() + 3500;
                 }
@@ -1939,6 +2094,8 @@ int main(int argc, char** argv) {
                     bulldozer_mode = false;
                     upgrade_mode = false;
                     painting_tiles = false;
+                    power_menu_open = false;
+                    overlay_menu_open = false;
                     feedback = "Pan tool selected. Right-drag or use WASD to move the map.";
                     feedback_until = SDL_GetTicks() + 3500;
                 }
@@ -2076,6 +2233,8 @@ int main(int argc, char** argv) {
                 if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(options_button, mx, my)) {
                     options_open = !options_open;
+                    power_menu_open = false;
+                    overlay_menu_open = false;
                     if (options_open) { budget_open = false; reports_open = false; }
                     painting_tiles = false;
                     continue;
@@ -2127,7 +2286,48 @@ int main(int argc, char** argv) {
                 if (mx >= sidebar_x && mx < sidebar_x + sidebar_width &&
                     my >= header && my < header + map_height) {
                     if (event.button.button == SDL_BUTTON_LEFT) {
-                        if (options_open) {
+                        if (power_menu_open || overlay_menu_open) {
+                            const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
+                            if (contains(back, mx, my)) {
+                                power_menu_open = false;
+                                overlay_menu_open = false;
+                            } else if (power_menu_open) {
+                                constexpr std::array<grace::Tile, 3> sources{
+                                    grace::Tile::power_plant, grace::Tile::solar_plant,
+                                    grace::Tile::wind_plant};
+                                for (int row = 0; row < 3; ++row)
+                                    if (contains(option_button(row), mx, my)) {
+                                        selected = sources[static_cast<std::size_t>(row)];
+                                        power_menu_open = false;
+                                        hand_mode = false;
+                                        bulldozer_mode = false;
+                                        upgrade_mode = false;
+                                        painting_tiles = false;
+                                        feedback = std::string(grace::World::name(selected)) +
+                                            ": " + std::to_string(grace::World::power_output(selected)) +
+                                            " kW, " + std::to_string(grace::World::cost(selected)) +
+                                            " funds, " + std::to_string(grace::World::power_upkeep(selected)) + "/week.";
+                                        feedback_until = SDL_GetTicks() + 5000;
+                                        break;
+                                    }
+                            } else {
+                                constexpr std::array<MapOverlay, 6> views{
+                                    MapOverlay::none, MapOverlay::power, MapOverlay::traffic,
+                                    MapOverlay::pollution, MapOverlay::noise, MapOverlay::services};
+                                for (int row = 0; row < 6; ++row)
+                                    if (contains(option_button(row), mx, my)) {
+                                        map_overlay = views[static_cast<std::size_t>(row)];
+                                        overlay_menu_open = false;
+                                        hand_mode = true;
+                                        bulldozer_mode = false;
+                                        upgrade_mode = false;
+                                        painting_tiles = false;
+                                        feedback = map_overlay == MapOverlay::none ? "Map view cleared." : overlay_legend(map_overlay);
+                                        feedback_until = SDL_GetTicks() + 5000;
+                                        break;
+                                    }
+                            }
+                        } else if (options_open) {
                             const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
                             if (contains(back, mx, my)) options_open = false;
                             for (int row = 0; row < 11; ++row) {
@@ -2155,6 +2355,16 @@ int main(int argc, char** argv) {
                                 break;
                             }
                         } else {
+                            if (contains(power_menu_button, mx, my)) {
+                                power_menu_open = true;
+                                painting_tiles = false;
+                                continue;
+                            }
+                            if (contains(overlay_menu_button, mx, my)) {
+                                overlay_menu_open = true;
+                                painting_tiles = false;
+                                continue;
+                            }
                             if (contains(hand_button, mx, my)) {
                                 hand_mode = true;
                                 bulldozer_mode = false;
@@ -2416,6 +2626,7 @@ int main(int argc, char** argv) {
         for (int y = 0; y < grace::World::height; ++y)
             for (int x = 0; x < grace::World::width; ++x)
                 draw_tile(renderer, world, x, y, camera, car_animation_ms);
+        draw_map_overlay(renderer, world, camera, map_overlay);
 
         // Workshops and connected power plants emit drifting smoke.
         // The effect is visual only; pollution's gameplay impact remains in World.
@@ -2493,7 +2704,7 @@ int main(int argc, char** argv) {
             preview = world;
             preview->place(hover_x, hover_y, selected);
         }
-        if (service_view)
+        if (service_view && map_overlay == MapOverlay::none)
             draw_coverage(renderer, world, preview ? &*preview : nullptr,
                           selected, camera, preview_valid);
         if (!hand_mode && selected == grace::Tile::road && !upgrade_mode && over_tile &&
@@ -2570,7 +2781,34 @@ int main(int argc, char** argv) {
         fill(renderer, {static_cast<float>(sidebar_x), static_cast<float>(header),
                         sidebar_width, 4}, {202, 169, 104});
         SDL_SetRenderDrawColor(renderer, 247, 239, 213, 255);
-        if (options_open) {
+        if (power_menu_open || overlay_menu_open) {
+            SDL_RenderDebugText(renderer, sidebar_x + 12, 112,
+                power_menu_open ? "POWER SOURCES" : "MAP VIEWS");
+            const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
+            draw_button(renderer, back, "BACK TO TOOLS");
+            if (power_menu_open) {
+                constexpr std::array<const char*, 3> labels{"FUEL   40F", "SOLAR 100F", "WIND   75F"};
+                for (int row = 0; row < 3; ++row)
+                    draw_button(renderer, option_button(row), labels[static_cast<std::size_t>(row)]);
+                SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 355, "FUEL: 12KW  6/WK");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 375, "NOISE + POLLUTION");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 405, "SOLAR: 8KW  2/WK");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 425, "CLEAN, STEADY");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 455, "WIND: 6KW  3/WK");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 475, "CLEAN, STEADY");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 515, "NEEDS ROAD ACCESS");
+            } else {
+                constexpr std::array<const char*, 6> labels{
+                    "NONE", "POWER", "TRAFFIC", "POLLUTION", "NOISE", "SERVICES"};
+                for (int row = 0; row < 6; ++row)
+                    draw_button(renderer, option_button(row), labels[static_cast<std::size_t>(row)],
+                        static_cast<int>(map_overlay) == row);
+                SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 500, "SELECT A MAP VIEW");
+                SDL_RenderDebugText(renderer, sidebar_x + 12, 520, "LEGEND IN FOOTER");
+            }
+        } else if (options_open) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "OPTIONS MENU");
             const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
             draw_button(renderer, back, "BACK TO TOOLS");
@@ -2587,7 +2825,8 @@ int main(int argc, char** argv) {
         } else {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "BUILD TOOLS");
             for (std::size_t index = 0; index < tools.size(); ++index) {
-                const auto tool = tools[index];
+                const auto tool = index == 7 && grace::World::power_output(selected) > 0
+                    ? selected : tools[index];
                 const auto rect = tool_button(static_cast<int>(index));
                 fill(renderer, rect, !hand_mode && !bulldozer_mode && !upgrade_mode && tool == selected
                     ? Color{202, 169, 104} : Color{69, 92, 91});
@@ -2634,13 +2873,8 @@ int main(int argc, char** argv) {
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, sidebar_x + 16, 581, "CLICK REPORTS  |  I");
             draw_button(renderer, upgrade_button, "UPGRADE ROAD", upgrade_mode);
-            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 671,
-                                "DRAG ROAD / BRIDGE");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 691,
-                                "1-9 SHORTCUTS");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
-                                "OPTIONS ABOVE");
+            draw_button(renderer, power_menu_button, "POWER SOURCES");
+            draw_button(renderer, overlay_menu_button, "MAP VIEWS", map_overlay != MapOverlay::none);
         }
         if (budget_open) draw_budget_panel(renderer, state);
         if (state.bankrupt && !budget_open) {
@@ -2714,7 +2948,7 @@ int main(int argc, char** argv) {
             if (world.is_connected(hover_x, hover_y) &&
                 !world.is_powered(hover_x, hover_y)) hint += " No power!";
             if (world.is_noise_polluted(hover_x, hover_y))
-                hint += " Noise and pollution from nearby workshops or plants lower wellbeing.";
+                hint += " Noise and pollution from nearby workshops or fuel plants lower wellbeing.";
         }
         if (now >= feedback_until && over_tile) {
             const auto hovered = world.tile(hover_x, hover_y);
@@ -2792,6 +3026,9 @@ int main(int argc, char** argv) {
         if (contains(play_button, mx, my))
             hint = paused ? "Play: start or resume the simulation (Space)." :
                             "Pause: stop the simulation (Space).";
+        else if (map_overlay != MapOverlay::none && now >= feedback_until &&
+                 demand_hover < 0 && !reports_open && !budget_open)
+            hint = overlay_legend(map_overlay);
         SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
         SDL_RenderDebugTextFormat(renderer, margin, footer_top + 11,
             "ACTIVE TOOL: %s%s", hand_mode ? "PAN / INSPECT" :
@@ -3089,6 +3326,13 @@ int main(int argc, char** argv) {
             if (frame) SDL_DestroySurface(frame);
         }
         SDL_RenderPresent(renderer);
+        if (views_smoke && (world.tile(11, 9) != grace::Tile::solar_plant ||
+            world.snapshot().power_capacity != 8 || selected != grace::Tile::solar_plant ||
+            map_overlay != MapOverlay::pollution || !hand_mode || power_menu_open ||
+            overlay_menu_open || !std::filesystem::exists(save_file))) {
+            std::fprintf(stderr, "Clean power, save/load, or map view controls failed\n");
+            exit_status = 1;
+        }
         if (annual_smoke && (!annual_open || !paused ||
             world.snapshot().week != 53 || world.snapshot().last_report_year != 1)) {
             std::fprintf(stderr, "Annual report did not open at the new year\n");
@@ -3165,7 +3409,7 @@ int main(int argc, char** argv) {
             exit_status = 1;
         }
         if (smoke || annual_smoke || capture || drag_smoke || pan_smoke || bridge_smoke || zone_smoke || toolbar_smoke || power_smoke ||
-            traffic_smoke || save_smoke ||
+            traffic_smoke || save_smoke || views_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))
             running = false;
@@ -3176,7 +3420,7 @@ int main(int argc, char** argv) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    if (save_smoke) {
+    if (save_smoke || views_smoke) {
         std::error_code error;
         std::filesystem::remove(save_file, error);
     }

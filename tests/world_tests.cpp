@@ -35,6 +35,11 @@ int main() {
     assert(annual_town.save(annual_save));
     auto annual_restored = grace::World::load(annual_save);
     assert(annual_restored && annual_restored->snapshot().year_weeks_recorded == 10);
+    std::string version_six = annual_save.str();
+    version_six.replace(0, std::string("GRACE_VALLEY_WORLD 7").size(),
+                        "GRACE_VALLEY_WORLD 6");
+    std::stringstream previous_version(version_six);
+    assert(grace::World::load(previous_version));
     for (int i = 0; i < 42; ++i) annual_restored->advance_week();
     const auto annual = annual_restored->snapshot();
     assert(annual.week == 53 && annual.last_report_year == 1);
@@ -375,6 +380,31 @@ int main() {
     assert(business.snapshot().tax_income > normal_tax.tax_income);
     assert(business.snapshot().industrial_demand < low_tax.industrial_demand);
     grace::World near_plant;
+    grace::World solar_town;
+    grace::World wind_town;
+    assert(solar_town.place(11, 9, grace::Tile::solar_plant));
+    assert(wind_town.place(11, 9, grace::Tile::wind_plant));
+    assert(solar_town.snapshot().power_capacity == 8);
+    assert(wind_town.snapshot().power_capacity == 6);
+    assert(solar_town.snapshot().building_upkeep == start.building_upkeep + 2);
+    assert(wind_town.snapshot().building_upkeep == start.building_upkeep + 3);
+    assert(!solar_town.is_noise_polluted(10, 7));
+    assert(!wind_town.is_noise_polluted(10, 7));
+    std::stringstream solar_save;
+    assert(solar_town.save(solar_save));
+    auto restored_solar = grace::World::load(solar_save);
+    assert(restored_solar && restored_solar->tile(11, 9) == grace::Tile::solar_plant &&
+           restored_solar->snapshot().power_capacity == 8);
+    std::string invalid_old_solar = solar_save.str();
+    invalid_old_solar.replace(0, std::string("GRACE_VALLEY_WORLD 7").size(),
+                              "GRACE_VALLEY_WORLD 6");
+    std::stringstream old_solar(invalid_old_solar);
+    assert(!grace::World::load(old_solar));
+    assert(solar_town.remove(11, 8));
+    assert(!solar_town.is_connected(11, 9));
+    assert(solar_town.snapshot().power_capacity == 0);
+    assert(solar_town.remove(11, 9));
+    assert(solar_town.snapshot().power_capacity == 0);
     grace::World distant_plant;
     assert(near_plant.place(11, 9, grace::Tile::power_plant));
     assert(distant_plant.place(15, 9, grace::Tile::power_plant));
