@@ -259,38 +259,49 @@ void draw_power_report(SDL_Renderer* renderer, const grace::World& world) {
     const int required = state.power_demand + zone_need;
     const int covered = std::min(required, state.power_capacity);
     const int shortage = std::max(0, required - state.power_capacity);
+    const int surplus = std::max(0, state.power_capacity - required);
+    const int unused_now = std::max(0, state.power_capacity - state.powered_demand);
     const auto text_color = [&](Uint8 r, Uint8 g, Uint8 b) {
         SDL_SetRenderDrawColor(renderer, r, g, b, 255);
     };
     fill(renderer, {95, 164, 830, 92}, {43, 65, 65});
     text_color(180, 202, 187);
     SDL_RenderDebugText(renderer, 112, 179, "TOTAL REQUIRED");
-    SDL_RenderDebugText(renderer, 382, 179, "CAPACITY AVAILABLE");
-    SDL_RenderDebugText(renderer, 682, 179, "ADDITIONAL NEEDED");
+    SDL_RenderDebugText(renderer, 315, 179, "CAPACITY");
+    SDL_RenderDebugText(renderer, 518, 179, "SHORTFALL");
+    SDL_RenderDebugText(renderer, 715, 179, "SURPLUS");
     text_color(255, 239, 203);
     SDL_RenderDebugTextFormat(renderer, 112, 211, "%d", required);
-    SDL_RenderDebugTextFormat(renderer, 382, 211, "%d", state.power_capacity);
+    SDL_RenderDebugTextFormat(renderer, 315, 211, "%d", state.power_capacity);
     text_color(shortage > 0 ? 245 : 142, shortage > 0 ? 130 : 207,
                shortage > 0 ? 113 : 151);
-    SDL_RenderDebugTextFormat(renderer, 682, 211, "%d", shortage);
+    SDL_RenderDebugTextFormat(renderer, 518, 211, "%d", shortage);
+    text_color(91, 173, 187);
+    SDL_RenderDebugTextFormat(renderer, 715, 211, "%d", surplus);
 
     fill(renderer, {95, 274, 830, 220}, {36, 55, 55});
     text_color(245, 238, 211);
     SDL_RenderDebugText(renderer, 112, 292, "CAN YOUR POWER PLANTS COVER ALL ZONES?");
     text_color(180, 202, 187);
     SDL_RenderDebugTextFormat(renderer, 112, 323,
-        "REQUIRED: %d  |  CAPACITY CAN COVER: %d  |  SHORT: %d",
-        required, covered, shortage);
+        "REQUIRED: %d  |  COVERED: %d  |  SHORT: %d  |  SURPLUS: %d",
+        required, covered, shortage, surplus);
     fill(renderer, {112, 355, 680, 30}, {66, 82, 83});
-    if (required > 0) {
-        const float covered_width = 680.0f * covered / required;
+    const int chart_max = std::max(required, state.power_capacity);
+    if (chart_max > 0) {
+        const float covered_width = 680.0f * covered / chart_max;
+        const float shortage_width = 680.0f * shortage / chart_max;
         fill(renderer, {112, 355, covered_width, 30}, {105, 184, 114});
-        fill(renderer, {112 + covered_width, 355, 680 - covered_width, 30}, {215, 92, 76});
+        fill(renderer, {112 + covered_width, 355, shortage_width, 30}, {215, 92, 76});
+        fill(renderer, {112 + covered_width + shortage_width, 355,
+                        680.0f * surplus / chart_max, 30}, {91, 173, 187});
     }
     text_color(142, 207, 151);
-    SDL_RenderDebugText(renderer, 112, 402, "GREEN: CAPACITY AVAILABLE");
+    SDL_RenderDebugText(renderer, 112, 402, "GREEN: COVERED");
     text_color(245, 150, 130);
-    SDL_RenderDebugText(renderer, 455, 402, "RED: MORE POWER NEEDED");
+    SDL_RenderDebugText(renderer, 340, 402, "RED: SHORTFALL");
+    text_color(91, 173, 187);
+    SDL_RenderDebugText(renderer, 570, 402, "BLUE: SURPLUS");
     text_color(180, 202, 187);
     SDL_RenderDebugText(renderer, 112, 452,
         "Estimate assumes every empty zone develops; zones do not use power yet.");
@@ -302,7 +313,8 @@ void draw_power_report(SDL_Renderer* renderer, const grace::World& world) {
         "Existing buildings need %d  +  empty zones may need %d  =  %d",
         state.power_demand, zone_need, required);
     SDL_RenderDebugTextFormat(renderer, 112, 580,
-        "POWER IN USE NOW: %d  |  CAPACITY: %d", state.powered_demand, state.power_capacity);
+        "IN USE NOW: %d  |  UNUSED NOW: %d  |  SURPLUS AFTER ZONES: %d",
+        state.powered_demand, unused_now, surplus);
 
     fill(renderer, {95, 632, 830, 73}, {36, 55, 55});
     text_color(245, 238, 211);
@@ -1127,7 +1139,9 @@ int main(int argc, char** argv) {
     const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_reports = argc > 2 && std::string(argv[1]) == "--capture-reports";
-    const bool capture_power = argc > 2 && std::string(argv[1]) == "--capture-power";
+    const bool capture_power_surplus = argc > 2 && std::string(argv[1]) == "--capture-power-surplus";
+    const bool capture_power = capture_power_surplus ||
+        (argc > 2 && std::string(argv[1]) == "--capture-power");
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
@@ -1204,8 +1218,9 @@ int main(int argc, char** argv) {
     }
     if (capture_power) {
         world.place(13, 9, grace::Tile::power_plant);
-        for (int x = 8; x <= 13; ++x)
-            world.place(x, 7, grace::Tile::industrial_zone);
+        if (!capture_power_surplus)
+            for (int x = 8; x <= 13; ++x)
+                world.place(x, 7, grace::Tile::industrial_zone);
     }
     if (capture_zones) {
         world.place(9, 7, grace::Tile::residential_zone);
