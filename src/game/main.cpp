@@ -50,6 +50,10 @@ constexpr SDL_FRect advisor_resume_button{644, 468, 250, 44};
 constexpr SDL_FRect demand_item(int index) {
     return {static_cast<float>(20 + index * 98), 72, 92, 24};
 }
+constexpr SDL_FRect budget_choice(int row, int choice) {
+    return {static_cast<float>(400 + choice * 153),
+            static_cast<float>(270 + row * 89), 140, 42};
+}
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect bulldozer_button{static_cast<float>(sidebar_x + 8), 466, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
@@ -136,6 +140,91 @@ void draw_button(SDL_Renderer* renderer, SDL_FRect rect, const char* label,
     const float label_width = static_cast<float>(std::strlen(label) * 8);
     SDL_RenderDebugText(renderer, rect.x + (rect.w - label_width) / 2,
                         rect.y + (rect.h - 8) / 2, label);
+}
+
+void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state,
+                       bool simulation_started) {
+    tint(renderer, {margin, header, map_width, map_height}, {12, 20, 22}, 135);
+    const SDL_FRect panel{140, 118, 760, 520};
+    fill(renderer, panel, {29, 45, 46});
+    SDL_SetRenderDrawColor(renderer, 202, 169, 104, 255);
+    SDL_RenderRect(renderer, &panel);
+    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+    SDL_RenderDebugText(renderer, 160, 135, "WEEKLY BUDGET");
+    SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+    SDL_RenderDebugText(renderer, 727, 135, "B / ESC CLOSE");
+
+    fill(renderer, {160, 160, 720, 82}, {43, 65, 65});
+    SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+    SDL_RenderDebugText(renderer, 176, 171, "FUNDS");
+    SDL_RenderDebugText(renderer, 346, 171, "IN / WEEK");
+    SDL_RenderDebugText(renderer, 526, 171, "OUT / WEEK");
+    SDL_RenderDebugText(renderer, 706, 171, "NET / WEEK");
+    SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+    SDL_RenderDebugTextFormat(renderer, 176, 189, "%d", state.treasury);
+    SDL_RenderDebugTextFormat(renderer, 346, 189, "+%d", state.weekly_income);
+    SDL_RenderDebugTextFormat(renderer, 526, 189, "-%d", state.weekly_upkeep);
+    const int net = state.weekly_income - state.weekly_upkeep;
+    SDL_SetRenderDrawColor(renderer, net >= 0 ? 142 : 245,
+        net >= 0 ? 207 : 130, net >= 0 ? 151 : 113, 255);
+    SDL_RenderDebugTextFormat(renderer, 706, 189, "%+d", net);
+    SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+    SDL_RenderDebugTextFormat(renderer, 176, 217, "Grant %d + giving %d + tax %d",
+        state.grant_income, state.giving_income, state.tax_income);
+    SDL_RenderDebugTextFormat(renderer, 526, 217,
+        "Build %d + roads %d + svc %d + other %d",
+        state.building_upkeep, state.road_upkeep,
+        state.service_upkeep, state.community_upkeep);
+
+    constexpr std::array<const char*, 4> names{
+        "GIVING", "SERVICES", "BUSINESS TAX", "ROAD CARE"};
+    constexpr std::array<const char*, 4> descriptions{
+        "Income vs wellbeing", "Care vs cost", "Revenue vs growth", "Repairs vs upkeep"};
+    constexpr std::array<std::array<const char*, 3>, 4> choices{{
+        {{"GENTLE", "BALANCED", "AMBITIOUS"}},
+        {{"LEAN", "BALANCED", "GENEROUS"}},
+        {{"LOW", "BALANCED", "HIGH"}},
+        {{"LEAN", "BALANCED", "GENEROUS"}}}};
+    constexpr std::array<std::array<const char*, 3>, 4> effects{{
+        {{"Wellbeing +", "Steady", "Income +"}},
+        {{"Lower cost", "Steady care", "Care +"}},
+        {{"Growth +", "Steady", "Revenue +"}},
+        {{"Road wear", "Maintain", "Repair +"}}}};
+    const std::array<int, 4> selected{
+        static_cast<int>(state.giving_policy), static_cast<int>(state.service_budget),
+        static_cast<int>(state.tax_policy), static_cast<int>(state.road_budget)};
+    for (int row = 0; row < 4; ++row) {
+        const float top = 250.0f + row * 89.0f;
+        fill(renderer, {160, top, 720, 80}, {36, 55, 55});
+        fill(renderer, {160, top, 3, 80},
+            row == 2 ? Color{91, 173, 187} :
+            row == 3 ? Color{218, 174, 103} : Color{105, 184, 114});
+        SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+        SDL_RenderDebugText(renderer, 176, top + 16, names[static_cast<std::size_t>(row)]);
+        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+        SDL_RenderDebugText(renderer, 176, top + 38,
+            descriptions[static_cast<std::size_t>(row)]);
+        for (int choice = 0; choice < 3; ++choice) {
+            const auto button = budget_choice(row, choice);
+            const bool active = selected[static_cast<std::size_t>(row)] == choice;
+            fill(renderer, button, active ? Color{120, 106, 62} : Color{59, 77, 75});
+            if (active) {
+                SDL_SetRenderDrawColor(renderer, 232, 190, 112, 255);
+                SDL_RenderRect(renderer, &button);
+            }
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugText(renderer, button.x + 10, button.y + 6,
+                choices[static_cast<std::size_t>(row)][static_cast<std::size_t>(choice)]);
+            SDL_SetRenderDrawColor(renderer, 196, 215, 200, 255);
+            SDL_RenderDebugText(renderer, button.x + 10, button.y + 24,
+                effects[static_cast<std::size_t>(row)][static_cast<std::size_t>(choice)]);
+        }
+    }
+    SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+    SDL_RenderDebugText(renderer, 160, 615,
+        state.bankrupt ? "BANKRUPT  |  BACKSPACE STARTS A NEW TOWN" :
+        !simulation_started ? "SETUP  |  CASHFLOW STARTS WHEN YOU PRESS SPACE" :
+        "Policy choices update the weekly estimate immediately.");
 }
 
 enum class ToolCategory { roads, zones, civic };
@@ -1566,22 +1655,18 @@ int main(int argc, char** argv) {
                 }
                 if (reports_open && contains(reports_panel, mx, my)) continue;
                 if (budget_open) {
-                    if (event.button.button == SDL_BUTTON_RIGHT) budget_open = false;
                     if (event.button.button == SDL_BUTTON_LEFT &&
                         !world.snapshot().bankrupt) {
-                        for (int choice = 0; choice < 3; ++choice) {
-                            const float left = 205.0f + choice * 205.0f;
-                            if (mx >= left && mx < left + 185.0f) {
-                                if (my >= 250 && my < 284)
-                                    world.set_giving_policy(static_cast<grace::GivingPolicy>(choice));
-                                if (my >= 340 && my < 374)
-                                    world.set_service_budget(static_cast<grace::ServiceBudget>(choice));
-                                if (my >= 520 && my < 554)
-                                    world.set_road_budget(static_cast<grace::RoadBudget>(choice));
-                                if (my >= 430 && my < 464)
-                                    world.set_tax_policy(static_cast<grace::TaxPolicy>(choice));
-                            }
-                        }
+                        for (int row = 0; row < 4; ++row)
+                            for (int choice = 0; choice < 3; ++choice)
+                                if (contains(budget_choice(row, choice), mx, my)) {
+                                    switch (row) {
+                                    case 0: world.set_giving_policy(static_cast<grace::GivingPolicy>(choice)); break;
+                                    case 1: world.set_service_budget(static_cast<grace::ServiceBudget>(choice)); break;
+                                    case 2: world.set_tax_policy(static_cast<grace::TaxPolicy>(choice)); break;
+                                    case 3: world.set_road_budget(static_cast<grace::RoadBudget>(choice)); break;
+                                    }
+                                }
                     }
                     continue;
                 }
@@ -2092,65 +2177,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 711,
                                 "OPTIONS ABOVE");
         }
-        if (budget_open) {
-            fill(renderer, {170, 155, 660, 470}, {29, 45, 46});
-            SDL_SetRenderDrawColor(renderer, 246, 221, 154, 255);
-            SDL_RenderDebugText(renderer, 205, 175, "WEEKLY BUDGET  |  B TO CLOSE  |  CLICK A POLICY OR USE G / O / T / M");
-            SDL_RenderDebugTextFormat(renderer, 205, 198,
-                "IN: grant %d + giving %d + business tax %d = %d",
-                state.grant_income, state.giving_income,
-                state.tax_income, state.weekly_income);
-            SDL_RenderDebugTextFormat(renderer, 205, 216,
-                "OUT: buildings %d + roads %d + services %d + community %d = %d  NET %+d",
-                state.building_upkeep, state.road_upkeep, state.service_upkeep,
-                state.community_upkeep, state.weekly_upkeep,
-                state.weekly_income - state.weekly_upkeep);
-            SDL_RenderDebugText(renderer, 205, 237, "GIVING: more income can strain household wellbeing");
-            constexpr std::array<const char*, 3> giving_labels{"GENTLE", "BALANCED", "AMBITIOUS"};
-            constexpr std::array<const char*, 3> service_labels{"LEAN", "BALANCED", "GENEROUS"};
-            constexpr std::array<const char*, 3> road_labels{"LEAN", "BALANCED", "GENEROUS"};
-            constexpr std::array<const char*, 3> tax_labels{"LOW", "BALANCED", "HIGH"};
-            for (int choice = 0; choice < 3; ++choice) {
-                const float left = 205.0f + choice * 205.0f;
-                fill(renderer, {left, 250, 185, 34},
-                     static_cast<int>(state.giving_policy) == choice
-                         ? Color{120, 106, 62} : Color{65, 80, 78});
-                fill(renderer, {left, 340, 185, 34},
-                     static_cast<int>(state.service_budget) == choice
-                         ? Color{120, 106, 62} : Color{65, 80, 78});
-                fill(renderer, {left, 430, 185, 34},
-                     static_cast<int>(state.tax_policy) == choice
-                         ? Color{120, 106, 62} : Color{65, 80, 78});
-                fill(renderer, {left, 520, 185, 34},
-                     static_cast<int>(state.road_budget) == choice
-                         ? Color{120, 106, 62} : Color{65, 80, 78});
-                SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-                SDL_RenderDebugText(renderer, left + 12, 262, giving_labels[choice]);
-                SDL_RenderDebugText(renderer, left + 12, 352, service_labels[choice]);
-                SDL_RenderDebugText(renderer, left + 12, 442, tax_labels[choice]);
-                SDL_RenderDebugText(renderer, left + 12, 532, road_labels[choice]);
-            }
-            SDL_RenderDebugText(renderer, 205, 287,
-                "GENTLE 1/RES +1 NEEDS   BALANCED 1.5/RES   AMBITIOUS 2/RES -3 NEEDS");
-            SDL_RenderDebugText(renderer, 205, 305, "SERVICES: higher upkeep improves care and belonging");
-            SDL_RenderDebugText(renderer, 205, 377,
-                "LEAN HALF COST +3 NEEDS   BALANCED +7   GENEROUS DOUBLE COST +11");
-            SDL_RenderDebugText(renderer, 205, 398,
-                "BUSINESS TAX: lower rates attract shops and workshops");
-            SDL_RenderDebugText(renderer, 205, 472,
-                "LOW: LESS REVENUE, MORE GROWTH    HIGH: MORE REVENUE, LESS GROWTH");
-            SDL_RenderDebugText(renderer, 205, 602,
-                state.bankrupt ? "BANKRUPT - BACKSPACE STARTS A NEW TOWN" :
-                !simulation_started ? "SETUP - BUILD NOW, THEN PRESS SPACE TO START CASHFLOW" :
-                "A NEGATIVE TREASURY AT WEEK END ENDS THIS TOWN");
-            SDL_RenderDebugText(renderer, 205, 490,
-                "ROAD MAINTENANCE: low funding saves now; neglected roads lose capacity");
-            SDL_RenderDebugText(renderer, 205, 562,
-                "LEAN: HALF COST, ROADS WEAR   BALANCED: HOLD   GENEROUS: REPAIR + COST");
-            SDL_RenderDebugTextFormat(renderer, 205, 582,
-                "CONDITION %d%%  DAMAGED %d  |  CITY SCORE PENALTY UP TO 20",
-                state.average_road_condition, state.bad_roads);
-        }
+        if (budget_open) draw_budget_panel(renderer, state, simulation_started);
         if (state.bankrupt && !budget_open) {
             tint(renderer, {margin, header, map_width, map_height}, {12, 24, 28}, 175);
             fill(renderer, {220, 184, 560, 328}, {218, 113, 91});
