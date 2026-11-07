@@ -44,6 +44,8 @@ constexpr SDL_FRect options_button{881, 17, 82, 42};
 constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
+constexpr SDL_FRect report_overview_tab{314, 118, 120, 28};
+constexpr SDL_FRect report_power_tab{442, 118, 100, 28};
 constexpr SDL_FRect traffic_alert_button{804, 72, 180, 24};
 constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
 constexpr SDL_FRect advisor_loan_button{282, 468, 190, 44};
@@ -119,6 +121,8 @@ struct Camera {
 struct Color { Uint8 r, g, b; };
 
 struct FinanceSample { int week, funds, income, upkeep; };
+struct PowerSample { int week, capacity, demand, consumed; };
+enum class ReportTab { overview, power };
 
 void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
@@ -237,6 +241,104 @@ void draw_budget_panel(SDL_Renderer* renderer, const grace::Snapshot& state) {
     draw_button(renderer, budget_loan_button,
         state.loan_balance > 0 ? "LOAN ACTIVE" : "BORROW 200",
         state.loan_balance > 0);
+}
+
+void draw_power_report(SDL_Renderer* renderer, const grace::Snapshot& state,
+                       const std::vector<PowerSample>& history) {
+    const int spare = std::max(0, state.power_capacity - state.powered_demand);
+    const int unmet = std::max(0, state.power_demand - state.powered_demand);
+    constexpr std::array<const char*, 4> titles{
+        "PRODUCTION", "CONSUMED", "NEEDED", "SPARE OUTPUT"};
+    const std::array<int, 4> values{
+        state.power_capacity, state.powered_demand, state.power_demand, spare};
+    const std::array<Color, 4> colors{{
+        {218, 174, 103}, {105, 184, 114}, {91, 173, 187}, {142, 207, 151}}};
+    for (int i = 0; i < 4; ++i) {
+        const float x = 95.0f + i * 210.0f;
+        fill(renderer, {x, 163, 200, 90}, {43, 65, 65});
+        fill(renderer, {x, 163, 3, 90}, colors[static_cast<std::size_t>(i)]);
+        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+        SDL_RenderDebugText(renderer, x + 13, 177, titles[static_cast<std::size_t>(i)]);
+        SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+        SDL_RenderDebugTextFormat(renderer, x + 13, 207, "%d", values[static_cast<std::size_t>(i)]);
+    }
+
+    fill(renderer, {95, 269, 830, 153}, {36, 55, 55});
+    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+    SDL_RenderDebugText(renderer, 109, 282, "POWER BALANCE TODAY");
+    const int scale = std::max({1, state.power_capacity, state.power_demand});
+    const auto power_bar = [&](float y, const char* label, int value, Color color) {
+        SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+        SDL_RenderDebugText(renderer, 109, y, label);
+        fill(renderer, {280, y, 500, 14}, {66, 82, 83});
+        fill(renderer, {280, y, 500.0f * value / scale, 14}, color);
+        SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+        SDL_RenderDebugTextFormat(renderer, 794, y, "%d", value);
+    };
+    power_bar(316, "PRODUCED", state.power_capacity, {218, 174, 103});
+    power_bar(348, "CONSUMED", state.powered_demand, {105, 184, 114});
+    power_bar(380, "CITY NEED", state.power_demand, {91, 173, 187});
+
+    fill(renderer, {95, 438, 830, 187}, {36, 55, 55});
+    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+    SDL_RenderDebugText(renderer, 109, 452, "POWER TREND  |  LAST 12 WEEKS");
+    const SDL_FRect chart{117, 484, 780, 107};
+    fill(renderer, chart, {31, 48, 48});
+    SDL_SetRenderDrawColor(renderer, 76, 94, 91, 255);
+    for (int line = 1; line <= 3; ++line) {
+        const float y = chart.y + chart.h * line / 4.0f;
+        SDL_RenderLine(renderer, chart.x, y, chart.x + chart.w, y);
+    }
+    int maximum = std::max(1, scale);
+    for (const auto& sample : history)
+        maximum = std::max({maximum, sample.capacity, sample.demand, sample.consumed});
+    const auto chart_y = [&](int value) {
+        return chart.y + chart.h - chart.h * value / maximum;
+    };
+    const std::array<Color, 3> line_colors{{
+        {218, 174, 103}, {105, 184, 114}, {91, 173, 187}}};
+    for (std::size_t i = 0; i < history.size(); ++i) {
+        const float x = chart.x + chart.w * static_cast<float>(i) /
+            std::max<std::size_t>(1, history.size() - 1);
+        const std::array<int, 3> current{
+            history[i].capacity, history[i].consumed, history[i].demand};
+        for (int series = 0; series < 3; ++series) {
+            const auto color = line_colors[static_cast<std::size_t>(series)];
+            SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
+            if (i > 0) {
+                const float previous_x = chart.x + chart.w * static_cast<float>(i - 1) /
+                    std::max<std::size_t>(1, history.size() - 1);
+                const std::array<int, 3> previous{
+                    history[i - 1].capacity, history[i - 1].consumed, history[i - 1].demand};
+                SDL_RenderLine(renderer, previous_x,
+                    chart_y(previous[static_cast<std::size_t>(series)]),
+                    x, chart_y(current[static_cast<std::size_t>(series)]));
+            } else {
+                fill(renderer, {x - 3, chart_y(current[static_cast<std::size_t>(series)]) - 3,
+                    6, 6}, color);
+            }
+        }
+    }
+    SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
+    SDL_RenderDebugText(renderer, 109, 602, "PRODUCED");
+    SDL_SetRenderDrawColor(renderer, 105, 184, 114, 255);
+    SDL_RenderDebugText(renderer, 213, 602, "CONSUMED");
+    SDL_SetRenderDrawColor(renderer, 91, 173, 187, 255);
+    SDL_RenderDebugText(renderer, 317, 602, "CITY NEED");
+
+    fill(renderer, {95, 640, 830, 65}, {43, 65, 65});
+    SDL_SetRenderDrawColor(renderer, unmet > 0 || state.unpowered_buildings > 0
+        ? 245 : 142, unmet > 0 || state.unpowered_buildings > 0
+        ? 190 : 207, unmet > 0 || state.unpowered_buildings > 0
+        ? 132 : 151, 255);
+    SDL_RenderDebugTextFormat(renderer, 109, 652,
+        "UNMET NEED %d  |  BUILDINGS WITHOUT POWER %d", unmet, state.unpowered_buildings);
+    SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+    SDL_RenderDebugText(renderer, 109, 678,
+        state.power_capacity == 0 ? "Build a connected power plant (8) to supply the town." :
+        state.power_capacity < state.power_demand ? "Add a connected power plant before more zones develop." :
+        state.unpowered_buildings > 0 ? "Supply is available; check road connections to unpowered buildings." :
+        "Power supply currently covers every connected building.");
 }
 
 enum class ToolCategory { roads, zones, civic };
@@ -1050,13 +1152,14 @@ int main(int argc, char** argv) {
     const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_reports = argc > 2 && std::string(argv[1]) == "--capture-reports";
+    const bool capture_power = argc > 2 && std::string(argv[1]) == "--capture-power";
     const bool capture_options = argc > 2 && std::string(argv[1]) == "--capture-options";
     const bool capture_zones = argc > 2 && std::string(argv[1]) == "--capture-zones";
     const bool capture_traffic = argc > 2 && std::string(argv[1]) == "--capture-traffic";
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
-         capture_budget || capture_reports || capture_options || capture_zones || capture_traffic ||
+         capture_budget || capture_reports || capture_power || capture_options || capture_zones || capture_traffic ||
          capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
@@ -1154,7 +1257,8 @@ int main(int argc, char** argv) {
     bool simulation_started = soak_seconds > 0 || capture_zones || capture_traffic ||
         capture_bankrupt || bankrupt_smoke;
     bool budget_open = capture_budget;
-    bool reports_open = capture_reports;
+    bool reports_open = capture_reports || capture_power;
+    ReportTab report_tab = capture_power ? ReportTab::power : ReportTab::overview;
     bool options_open = capture_options;
     bool upgrade_mode = false;
     bool bulldozer_mode = false;
@@ -1165,12 +1269,16 @@ int main(int argc, char** argv) {
     bool advisor_open = false;
     bool advisor_acknowledged = false;
     std::vector<FinanceSample> finance_history;
+    std::vector<PowerSample> power_history;
     int paint_x = 0, paint_y = 0;
     const auto record_finances = [&] {
         const auto snapshot = world.snapshot();
         finance_history.push_back({snapshot.week, snapshot.treasury,
                                    snapshot.weekly_income, snapshot.weekly_upkeep});
         if (finance_history.size() > 12) finance_history.erase(finance_history.begin());
+        power_history.push_back({snapshot.week, snapshot.power_capacity,
+                                 snapshot.power_demand, snapshot.powered_demand});
+        if (power_history.size() > 12) power_history.erase(power_history.begin());
     };
     record_finances();
     std::string feedback = capture_traffic
@@ -1203,6 +1311,7 @@ int main(int argc, char** argv) {
         paused = true;
         budget_open = false;
         reports_open = false;
+        report_tab = ReportTab::overview;
         options_open = false;
         upgrade_mode = false;
         bulldozer_mode = false;
@@ -1210,6 +1319,7 @@ int main(int argc, char** argv) {
         advisor_open = false;
         advisor_acknowledged = false;
         finance_history.clear();
+        power_history.clear();
         record_finances();
         dragging = false;
         pan_button = 0;
@@ -1363,6 +1473,7 @@ int main(int argc, char** argv) {
                 else {
                     world = std::move(*restored);
                     finance_history.clear();
+                    power_history.clear();
                     record_finances();
                     advisor_open = false;
                     advisor_acknowledged = false;
@@ -1376,6 +1487,7 @@ int main(int argc, char** argv) {
                     simulation_started = saved_started != 0;
                     budget_open = false;
                     reports_open = false;
+                    report_tab = ReportTab::overview;
                     options_open = false;
                     dragging = false;
                     painting_tiles = false;
@@ -1619,6 +1731,11 @@ int main(int argc, char** argv) {
                     if (reports_open) { budget_open = false; options_open = false; }
                     continue;
                 }
+                if (reports_open && event.key.key == SDLK_TAB) {
+                    report_tab = report_tab == ReportTab::overview
+                        ? ReportTab::power : ReportTab::overview;
+                    continue;
+                }
                 if (world.snapshot().bankrupt) continue;
                 if (event.key.key == SDLK_SPACE) {
                     advisor_open = false;
@@ -1762,6 +1879,7 @@ int main(int argc, char** argv) {
                     world.snapshot().congested_roads > 0 &&
                     contains(traffic_alert_button, mx, my)) {
                     reports_open = true;
+                    report_tab = ReportTab::overview;
                     budget_open = false;
                     options_open = false;
                     continue;
@@ -1800,6 +1918,16 @@ int main(int argc, char** argv) {
                     options_open = !options_open;
                     if (options_open) { budget_open = false; reports_open = false; }
                     painting_tiles = false;
+                    continue;
+                }
+                if (reports_open && event.button.button == SDL_BUTTON_LEFT &&
+                    contains(report_overview_tab, mx, my)) {
+                    report_tab = ReportTab::overview;
+                    continue;
+                }
+                if (reports_open && event.button.button == SDL_BUTTON_LEFT &&
+                    contains(report_power_tab, mx, my)) {
+                    report_tab = ReportTab::power;
                     continue;
                 }
                 if (reports_open && contains(reports_panel, mx, my)) continue;
@@ -2506,9 +2634,23 @@ int main(int argc, char** argv) {
             SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
             SDL_RenderDebugText(renderer, reports_panel.x + 18,
                 reports_panel.y + 14, "CITY REPORTS");
+            draw_button(renderer, report_overview_tab, "OVERVIEW",
+                        report_tab == ReportTab::overview);
+            draw_button(renderer, report_power_tab, "POWER",
+                        report_tab == ReportTab::power);
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
             SDL_RenderDebugText(renderer, reports_panel.x + 620,
-                reports_panel.y + 14, "REPORTS / I / ESC CLOSE");
+                reports_panel.y + 14, "TAB SWITCH  |  ESC CLOSE");
+
+            if (report_tab == ReportTab::power) {
+                auto displayed_power = power_history;
+                const PowerSample current_power{state.week, state.power_capacity,
+                    state.power_demand, state.powered_demand};
+                if (!displayed_power.empty() && displayed_power.back().week == state.week)
+                    displayed_power.back() = current_power;
+                else displayed_power.push_back(current_power);
+                draw_power_report(renderer, state, displayed_power);
+            } else {
 
             const auto card = [&](SDL_FRect rect, Color accent) {
                 fill(renderer, rect, {43, 65, 65});
@@ -2697,6 +2839,7 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, 540, 693, "INCOME");
             SDL_SetRenderDrawColor(renderer, 218, 126, 103, 255);
             SDL_RenderDebugText(renderer, 620, 693, "EXPENSES");
+            }
         }
         if (advisor_open && !state.bankrupt) {
             tint(renderer, {static_cast<float>(margin), static_cast<float>(header),
