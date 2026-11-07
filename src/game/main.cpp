@@ -16,6 +16,7 @@
 #include <string>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -43,6 +44,9 @@ constexpr SDL_FRect options_button{881, 17, 82, 42};
 constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
+constexpr SDL_FRect advisor_panel{252, 220, 720, 330};
+constexpr SDL_FRect advisor_budget_button{330, 468, 250, 44};
+constexpr SDL_FRect advisor_resume_button{644, 468, 250, 44};
 constexpr SDL_FRect upgrade_button{static_cast<float>(sidebar_x + 8), 620, 172, 35};
 constexpr SDL_FRect bulldozer_button{static_cast<float>(sidebar_x + 8), 466, 172, 35};
 constexpr SDL_FRect tool_button(int index) {
@@ -102,6 +106,8 @@ struct Camera {
 };
 
 struct Color { Uint8 r, g, b; };
+
+struct FinanceSample { int week, funds, income, upkeep; };
 
 void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
@@ -646,6 +652,21 @@ std::string town_advice(const grace::World& world) {
     return "Watch the demand bars, then inspect chapel and pantry coverage with tools 5 and 6.";
 }
 
+std::string financial_advice(const grace::World& world) {
+    const auto state = world.snapshot();
+    if (state.weekly_upkeep <= state.weekly_income)
+        return "Your income currently covers weekly costs. Keep a cash reserve before expanding.";
+    if (state.giving_policy == grace::GivingPolicy::ambitious)
+        return "Giving is ambitious. Set it to Balanced or Gentle in Budget to reduce the weekly deficit.";
+    if (state.service_budget == grace::ServiceBudget::generous)
+        return "Services are generously funded. Try Balanced funding, then watch care and belonging.";
+    if (state.road_budget == grace::RoadBudget::generous && state.bad_roads == 0)
+        return "Roads are healthy. Balanced maintenance can lower costs; restore funding if roads wear down.";
+    if (state.tax_policy != grace::TaxPolicy::high)
+        return "Consider High business tax for more weekly revenue, then check whether business demand slows.";
+    return "Pause expansion and use Budget to trim upkeep. Protect essential care, power, and road access.";
+}
+
 struct MapTooltip {
     std::string title;
     std::array<std::string, 3> details{};
@@ -981,7 +1002,17 @@ int main(int argc, char** argv) {
     bool bulldozer_mode = false;
     bool dragging = false;
     bool painting_tiles = false;
+    bool advisor_open = false;
+    bool advisor_acknowledged = false;
+    std::vector<FinanceSample> finance_history;
     int paint_x = 0, paint_y = 0;
+    const auto record_finances = [&] {
+        const auto snapshot = world.snapshot();
+        finance_history.push_back({snapshot.week, snapshot.treasury,
+                                   snapshot.weekly_income, snapshot.weekly_upkeep});
+        if (finance_history.size() > 12) finance_history.erase(finance_history.begin());
+    };
+    record_finances();
     std::string feedback = capture_traffic
         ? "Traffic alert: upgrade amber roads to keep commutes moving."
         : world.snapshot().bankrupt
@@ -1013,6 +1044,10 @@ int main(int argc, char** argv) {
         options_open = false;
         upgrade_mode = false;
         bulldozer_mode = false;
+        advisor_open = false;
+        advisor_acknowledged = false;
+        finance_history.clear();
+        record_finances();
         dragging = false;
         painting_tiles = false;
         last_week = SDL_GetTicks();
@@ -1069,6 +1104,7 @@ int main(int argc, char** argv) {
             feedback = "Pause a running town to step one week.";
         } else {
             world.advance_week();
+            record_finances();
             feedback = world.snapshot().bankrupt
                 ? "BANKRUPT: review the budget or start a new town."
                 : "Advanced one week.";
@@ -1156,6 +1192,10 @@ int main(int argc, char** argv) {
                 if (!valid) feedback = "Save is damaged or uses an unsupported version.";
                 else {
                     world = std::move(*restored);
+                    finance_history.clear();
+                    record_finances();
+                    advisor_open = false;
+                    advisor_acknowledged = false;
                     camera = restored_camera;
                     camera.clamp();
                     selected = tool;
@@ -1353,7 +1393,8 @@ int main(int argc, char** argv) {
                 if (event.key.key == SDLK_F5) { save_game(); continue; }
                 if (event.key.key == SDLK_F9) { load_game(); continue; }
                 if (event.key.key == SDLK_ESCAPE) {
-                    if (budget_open) budget_open = false;
+                    if (advisor_open) advisor_open = false;
+                    else if (budget_open) budget_open = false;
                     else if (reports_open) reports_open = false;
                     else if (options_open) options_open = false;
                     else running = false;
@@ -1364,17 +1405,22 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (event.key.key == SDLK_B) {
+                    advisor_open = false;
                     budget_open = !budget_open;
                     if (budget_open) { options_open = false; reports_open = false; }
                     continue;
                 }
                 if (event.key.key == SDLK_I) {
+                    advisor_open = false;
                     reports_open = !reports_open;
                     if (reports_open) { budget_open = false; options_open = false; }
                     continue;
                 }
                 if (world.snapshot().bankrupt) continue;
-                if (event.key.key == SDLK_SPACE) toggle_play();
+                if (event.key.key == SDLK_SPACE) {
+                    advisor_open = false;
+                    toggle_play();
+                }
                 if (event.key.key == SDLK_U) {
                     upgrade_mode = !upgrade_mode;
                     if (upgrade_mode) { selected = grace::Tile::road; options_open = false; }
@@ -1465,6 +1511,18 @@ int main(int argc, char** argv) {
                 float mx = event.button.x;
                 float my = event.button.y;
                 SDL_RenderCoordinatesFromWindow(renderer, mx, my, &mx, &my);
+                if (advisor_open) {
+                    if (event.button.button == SDL_BUTTON_LEFT &&
+                        contains(advisor_budget_button, mx, my)) {
+                        advisor_open = false;
+                        budget_open = true;
+                    } else if (event.button.button == SDL_BUTTON_LEFT &&
+                               contains(advisor_resume_button, mx, my)) {
+                        advisor_open = false;
+                        toggle_play();
+                    }
+                    continue;
+                }
                 if (event.button.button == SDL_BUTTON_LEFT &&
                     contains(save_button, mx, my)) {
                     save_game();
@@ -1663,6 +1721,7 @@ int main(int argc, char** argv) {
         if (paused) last_week = now;
         if (!paused && now - last_week >= 2500) {
             world.advance_week();
+            record_finances();
             last_week = now;
             if (world.snapshot().bankrupt) {
                 paused = true;
@@ -1675,8 +1734,26 @@ int main(int argc, char** argv) {
         }
         if (soak_seconds > 0 && now - last_autoplay >= 2500) {
             autoplay_step(world);
+            record_finances();
             last_autoplay = now;
         }
+        const auto advisor_state = world.snapshot();
+        const int weekly_deficit = advisor_state.weekly_upkeep - advisor_state.weekly_income;
+        const int runway = weekly_deficit > 0
+            ? advisor_state.treasury / weekly_deficit : 99;
+        if (advisor_state.treasury >= 0 && !advisor_state.bankrupt &&
+            simulation_started && !paused && weekly_deficit > 0 && runway <= 3 &&
+            !advisor_acknowledged) {
+            advisor_open = true;
+            advisor_acknowledged = true;
+            paused = true;
+            budget_open = false;
+            reports_open = false;
+            options_open = false;
+            feedback = "Your city advisor sees a budget crisis approaching.";
+            feedback_until = now + 5000;
+        }
+        if (weekly_deficit <= 0 || runway > 5) advisor_acknowledged = false;
         title(window, world.snapshot(), selected, paused, simulation_started);
         SDL_SetRenderDrawColor(renderer, 34, 51, 55, 255);
         SDL_RenderClear(renderer);
@@ -2280,18 +2357,131 @@ int main(int argc, char** argv) {
 
             fill(renderer, {95, 590, 830, 116}, {36, 55, 55});
             SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, 109, 601, "WEEKLY BUDGET SUMMARY");
+            SDL_RenderDebugText(renderer, 109, 598, "12-WEEK FINANCIAL TRENDS");
             SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
             SDL_RenderDebugTextFormat(renderer, 109, 623,
-                "IN %d  |  OUT %d  |  NET %+d",
-                state.weekly_income, state.weekly_upkeep,
+                "FUNDS %d  |  WEEKLY NET %+d",
+                state.treasury,
                 state.weekly_income - state.weekly_upkeep);
-            SDL_RenderDebugTextFormat(renderer, 109, 643,
-                "GIVING %s  |  SERVICES %s  |  ROADS %s  |  TAX %s",
-                giving_name(state.giving_policy), service_name(state.service_budget),
-                road_budget_name(state.road_budget), tax_name(state.tax_policy));
-            SDL_RenderDebugText(renderer, 109, 665,
-                "Click BUDGET for policy controls and detailed expenses.");
+            SDL_RenderDebugTextFormat(renderer, 540, 623,
+                "IN %d  |  OUT %d",
+                state.weekly_income, state.weekly_upkeep,
+                state.weekly_upkeep);
+
+            const SDL_FRect funds_chart{110, 637, 360, 48};
+            const SDL_FRect cashflow_chart{540, 637, 360, 48};
+            const auto chart_frame = [&](SDL_FRect area) {
+                fill(renderer, area, {31, 48, 48});
+                SDL_SetRenderDrawColor(renderer, 76, 94, 91, 255);
+                SDL_RenderLine(renderer, area.x, area.y + area.h,
+                               area.x + area.w, area.y + area.h);
+                for (int row = 1; row <= 2; ++row) {
+                    const float gy = area.y + area.h * row / 3.0f;
+                    SDL_RenderLine(renderer, area.x, gy, area.x + area.w, gy);
+                }
+            };
+            chart_frame(funds_chart);
+            chart_frame(cashflow_chart);
+            if (!finance_history.empty()) {
+                const auto [min_funds, max_funds] = std::minmax_element(
+                    finance_history.begin(), finance_history.end(),
+                    [](const FinanceSample& a, const FinanceSample& b) {
+                        return a.funds < b.funds;
+                    });
+                const float low = static_cast<float>(min_funds->funds);
+                const float high = std::max(low + 1.0f, static_cast<float>(max_funds->funds));
+                int maximum_flow = 1;
+                for (const auto& sample : finance_history)
+                    maximum_flow = std::max({maximum_flow, sample.income, sample.upkeep});
+                const float flow_max = static_cast<float>(maximum_flow);
+                const auto plot_y = [](SDL_FRect area, float value, float min_value,
+                                       float max_value) {
+                    const float ratio = (value - min_value) /
+                        std::max(1.0f, max_value - min_value);
+                    return area.y + area.h - ratio * area.h;
+                };
+                for (std::size_t index = 1; index < finance_history.size(); ++index) {
+                    const float x0 = funds_chart.x + funds_chart.w *
+                        static_cast<float>(index - 1) / (finance_history.size() - 1);
+                    const float x1 = funds_chart.x + funds_chart.w *
+                        static_cast<float>(index) / (finance_history.size() - 1);
+                    SDL_SetRenderDrawColor(renderer, 105, 184, 114, 255);
+                    SDL_RenderLine(renderer, x0,
+                        plot_y(funds_chart, static_cast<float>(finance_history[index - 1].funds), low, high),
+                        x1, plot_y(funds_chart, static_cast<float>(finance_history[index].funds), low, high));
+                    const float in0 = cashflow_chart.y + cashflow_chart.h -
+                        finance_history[index - 1].income / flow_max * cashflow_chart.h;
+                    const float in1 = cashflow_chart.y + cashflow_chart.h -
+                        finance_history[index].income / flow_max * cashflow_chart.h;
+                    const float out0 = cashflow_chart.y + cashflow_chart.h -
+                        finance_history[index - 1].upkeep / flow_max * cashflow_chart.h;
+                    const float out1 = cashflow_chart.y + cashflow_chart.h -
+                        finance_history[index].upkeep / flow_max * cashflow_chart.h;
+                    SDL_SetRenderDrawColor(renderer, 91, 173, 187, 255);
+                    SDL_RenderLine(renderer, x0 - funds_chart.x + cashflow_chart.x, in0,
+                                   x1 - funds_chart.x + cashflow_chart.x, in1);
+                    SDL_SetRenderDrawColor(renderer, 218, 126, 103, 255);
+                    SDL_RenderLine(renderer, x0 - funds_chart.x + cashflow_chart.x, out0,
+                                   x1 - funds_chart.x + cashflow_chart.x, out1);
+                }
+                if (finance_history.size() == 1) {
+                    const auto& sample = finance_history.front();
+                    SDL_SetRenderDrawColor(renderer, 105, 184, 114, 255);
+                    SDL_FRect funds_point{funds_chart.x + funds_chart.w * 0.5f - 3,
+                        plot_y(funds_chart, static_cast<float>(sample.funds), low, high) - 3,
+                        6, 6};
+                    SDL_RenderFillRect(renderer, &funds_point);
+                    SDL_SetRenderDrawColor(renderer, 91, 173, 187, 255);
+                    SDL_FRect income_point{cashflow_chart.x + cashflow_chart.w * 0.5f - 3,
+                        cashflow_chart.y + cashflow_chart.h -
+                            sample.income / flow_max * cashflow_chart.h - 3, 6, 6};
+                    SDL_RenderFillRect(renderer, &income_point);
+                    SDL_SetRenderDrawColor(renderer, 218, 126, 103, 255);
+                    SDL_FRect expense_point{cashflow_chart.x + cashflow_chart.w * 0.5f - 3,
+                        cashflow_chart.y + cashflow_chart.h -
+                            sample.upkeep / flow_max * cashflow_chart.h - 3, 6, 6};
+                    SDL_RenderFillRect(renderer, &expense_point);
+                }
+            }
+            SDL_SetRenderDrawColor(renderer, 202, 221, 189, 255);
+            SDL_RenderDebugText(renderer, 110, 693, "FUNDS BY WEEK");
+            SDL_SetRenderDrawColor(renderer, 91, 173, 187, 255);
+            SDL_RenderDebugText(renderer, 540, 693, "INCOME");
+            SDL_SetRenderDrawColor(renderer, 218, 126, 103, 255);
+            SDL_RenderDebugText(renderer, 620, 693, "EXPENSES");
+        }
+        if (advisor_open && !state.bankrupt) {
+            tint(renderer, {static_cast<float>(margin), static_cast<float>(header),
+                static_cast<float>(map_width), static_cast<float>(map_height)},
+                {9, 16, 18}, 165);
+            fill(renderer, advisor_panel, {31, 48, 48});
+            SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
+            SDL_RenderRect(renderer, &advisor_panel);
+            fill(renderer, {advisor_panel.x + 1, advisor_panel.y + 1,
+                advisor_panel.w - 2, 48}, {66, 61, 47});
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugText(renderer, advisor_panel.x + 22,
+                advisor_panel.y + 18, "CITY ADVISOR  |  FINANCIAL WARNING");
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, advisor_panel.x + 24,
+                advisor_panel.y + 82, "Miriam, your community management advisor:");
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugText(renderer, advisor_panel.x + 24,
+                advisor_panel.y + 116, financial_advice(world).c_str());
+            SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
+            SDL_RenderDebugTextFormat(renderer, advisor_panel.x + 24,
+                advisor_panel.y + 158,
+                "Funds %d  |  Weekly deficit %d  |  About %d weeks of runway",
+                state.treasury, weekly_deficit, std::max(1, runway));
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, advisor_panel.x + 24,
+                advisor_panel.y + 194,
+                "The advisor uses current town conditions to explain its recommendation.");
+            draw_button(renderer, advisor_budget_button, "OPEN BUDGET");
+            draw_button(renderer, advisor_resume_button, "RESUME TOWN");
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, advisor_panel.x + 24,
+                advisor_panel.y + 286, "ESC CLOSES  |  SPACE RESUMES");
         }
         if (capture) {
             SDL_Surface* frame = SDL_RenderReadPixels(renderer, nullptr);

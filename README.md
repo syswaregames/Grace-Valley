@@ -13,6 +13,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Demolish roads, zones, or buildings | Select **Bulldozer** or press `9`, then click or drag with the left mouse button |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
+| Review financial trends | Open Reports to see a 12-week funds chart and income-versus-expenses chart |
 | Save the current town | Click **Save** at the top or press `F5` |
 | Load the saved town | Click **Load** at the top or press `F9` |
 | Inspect chapel or pantry coverage | Select tool `5` or `6` |
@@ -27,6 +28,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Paint zoning areas | Select residential (`2`), commercial (`3`), or industrial (`4`); hold left click and drag |
 | Start the weekly simulation / pause or resume | Click **Play/Pause** or press `Space` |
 | Open the budget | Click **Budget** or press `B` (click a policy to select it) |
+| Get financial help | When projected cash runway falls to about three weeks, the city pauses and the advisor recommends budget changes |
 | Cycle giving policy | `G` |
 | Cycle service budget | `O` |
 | Cycle business tax | `T` (low, balanced, high) |
