@@ -44,6 +44,7 @@ constexpr SDL_FRect options_button{881, 17, 82, 42};
 constexpr SDL_FRect save_button{969, 17, 58, 42};
 constexpr SDL_FRect load_button{1033, 17, 58, 42};
 constexpr SDL_FRect reports_panel{75, 112, 870, 618};
+constexpr SDL_FRect annual_close_button{390, 530, 240, 44};
 constexpr SDL_FRect report_overview_tab{314, 118, 120, 28};
 constexpr SDL_FRect report_power_tab{442, 118, 100, 28};
 constexpr SDL_FRect report_issues_tab{550, 118, 100, 28};
@@ -123,6 +124,22 @@ struct Color { Uint8 r, g, b; };
 
 struct FinanceSample { int week, funds, income, upkeep; };
 enum class ReportTab { overview, power, issues };
+
+struct CalendarDate { const char* month; int day, year; };
+
+CalendarDate calendar_date(int week) {
+    constexpr std::array<const char*, 12> months{
+        "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    constexpr std::array<int, 12> month_weeks{4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5};
+    int remaining = (week - 1) % 52;
+    for (std::size_t month = 0; month < months.size(); ++month) {
+        if (remaining < month_weeks[month])
+            return {months[month], 1 + remaining * 7, (week - 1) / 52 + 1};
+        remaining -= month_weeks[month];
+    }
+    return {"DEC", 29, (week - 1) / 52 + 1};
+}
 
 void fill(SDL_Renderer* renderer, SDL_FRect rect, Color color) {
     SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, 255);
@@ -1213,6 +1230,7 @@ PaintResult paint_segment(grace::World& world, grace::Tile type,
 
 int main(int argc, char** argv) {
     const bool smoke = argc > 1 && std::string(argv[1]) == "--smoke";
+    const bool annual_smoke = argc > 1 && std::string(argv[1]) == "--annual-smoke";
     const bool drag_smoke = argc > 1 && std::string(argv[1]) == "--drag-smoke";
     const bool pan_smoke = argc > 1 && std::string(argv[1]) == "--pan-smoke";
     const bool bridge_smoke = argc > 1 && std::string(argv[1]) == "--bridge-smoke";
@@ -1226,6 +1244,7 @@ int main(int argc, char** argv) {
     const bool capture_bridge = argc > 2 && std::string(argv[1]) == "--capture-bridge";
     const bool capture_budget = argc > 2 && std::string(argv[1]) == "--capture-budget";
     const bool capture_reports = argc > 2 && std::string(argv[1]) == "--capture-reports";
+    const bool capture_annual = argc > 2 && std::string(argv[1]) == "--capture-annual";
     const bool capture_power_surplus = argc > 2 && std::string(argv[1]) == "--capture-power-surplus";
     const bool capture_power = capture_power_surplus ||
         (argc > 2 && std::string(argv[1]) == "--capture-power");
@@ -1237,7 +1256,7 @@ int main(int argc, char** argv) {
     const bool capture_bankrupt = argc > 2 && std::string(argv[1]) == "--capture-bankrupt";
     const bool capture = argc > 2 &&
         (std::string(argv[1]) == "--capture" || capture_roads || capture_bridge ||
-         capture_budget || capture_reports || capture_power || capture_options || capture_zones || capture_traffic ||
+         capture_budget || capture_reports || capture_annual || capture_power || capture_options || capture_zones || capture_traffic ||
          capture_bankrupt);
     const int soak_seconds = argc > 2 && std::string(argv[1]) == "--soak"
         ? std::max(1, std::atoi(argv[2])) : 0;
@@ -1305,6 +1324,10 @@ int main(int argc, char** argv) {
         for (int y : {7, 6, 5, 4}) world.place(17, y, grace::Tile::road);
         for (int x = 18; x <= 23; ++x) world.place(x, 4, grace::Tile::road);
     }
+    if (capture_annual || annual_smoke) {
+        for (int week = 0; week < (annual_smoke ? 51 : 52) && !world.snapshot().bankrupt; ++week)
+            world.advance_week();
+    }
     if (capture_power) {
         world.place(13, 9, grace::Tile::power_plant);
         if (!capture_power_surplus)
@@ -1339,7 +1362,7 @@ int main(int argc, char** argv) {
     bool running = true;
     bool paused = soak_seconds == 0;
     bool simulation_started = soak_seconds > 0 || capture_zones || capture_traffic ||
-        capture_bankrupt || bankrupt_smoke;
+        capture_bankrupt || bankrupt_smoke || capture_annual || annual_smoke;
     bool budget_open = capture_budget;
     bool reports_open = capture_reports || capture_power || capture_issues;
     ReportTab report_tab = capture_issues ? ReportTab::issues :
@@ -1353,6 +1376,8 @@ int main(int argc, char** argv) {
     bool painting_tiles = false;
     bool advisor_open = false;
     bool advisor_acknowledged = false;
+    bool annual_open = capture_annual;
+    bool annual_resume = false;
     std::vector<FinanceSample> finance_history;
     int paint_x = 0, paint_y = 0;
     const auto record_finances = [&] {
@@ -1399,6 +1424,8 @@ int main(int argc, char** argv) {
         hand_mode = false;
         advisor_open = false;
         advisor_acknowledged = false;
+        annual_open = false;
+        annual_resume = false;
         finance_history.clear();
         record_finances();
         dragging = false;
@@ -1414,6 +1441,24 @@ int main(int argc, char** argv) {
         paused = !paused;
         feedback = paused ? "Simulation paused." : "Simulation running. Weekly cashflow has started.";
         feedback_until = SDL_GetTicks() + 3500;
+    };
+    auto show_annual = [&](bool resume_after) {
+        annual_resume = resume_after;
+        annual_open = true;
+        paused = true;
+        budget_open = false;
+        reports_open = false;
+        options_open = false;
+        advisor_open = false;
+        painting_tiles = false;
+        dragging = false;
+        pan_button = 0;
+    };
+    auto close_annual = [&] {
+        annual_open = false;
+        paused = !annual_resume;
+        annual_resume = false;
+        last_week = SDL_GetTicks();
     };
     auto borrow_money = [&] {
         if (world.take_loan())
@@ -1463,8 +1508,12 @@ int main(int argc, char** argv) {
         if (!paused || !simulation_started || world.snapshot().bankrupt) {
             feedback = "Pause a running town to step one week.";
         } else {
+            const int previous_report = world.snapshot().last_report_year;
             world.advance_week();
             record_finances();
+            if (!world.snapshot().bankrupt &&
+                world.snapshot().last_report_year != previous_report)
+                show_annual(false);
             feedback = world.snapshot().bankrupt
                 ? "BANKRUPT: review the budget or start a new town."
                 : "Advanced one week.";
@@ -1556,6 +1605,8 @@ int main(int argc, char** argv) {
                     record_finances();
                     advisor_open = false;
                     advisor_acknowledged = false;
+                    annual_open = false;
+                    annual_resume = false;
                     camera = restored_camera;
                     camera.clamp();
                     selected = tool;
@@ -1772,6 +1823,13 @@ int main(int argc, char** argv) {
         SDL_PushEvent(&select_hand);
     }
 
+    if (annual_smoke) {
+        SDL_Event step{};
+        step.type = SDL_EVENT_KEY_DOWN;
+        step.key.key = SDLK_N;
+        SDL_PushEvent(&step);
+    }
+
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -1789,6 +1847,11 @@ int main(int argc, char** argv) {
                 painting_tiles = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                if (annual_open) {
+                    if (event.key.key == SDLK_ESCAPE || event.key.key == SDLK_SPACE ||
+                        event.key.key == SDLK_RETURN) close_annual();
+                    continue;
+                }
                 if (event.key.key == SDLK_F5) { save_game(); continue; }
                 if (event.key.key == SDLK_F9) { load_game(); continue; }
                 if (event.key.key == SDLK_ESCAPE) {
@@ -1928,6 +1991,13 @@ int main(int argc, char** argv) {
                 }
             }
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                if (annual_open) {
+                    float ax = event.button.x, ay = event.button.y;
+                    SDL_RenderCoordinatesFromWindow(renderer, ax, ay, &ax, &ay);
+                    if (event.button.button == SDL_BUTTON_LEFT &&
+                        contains(annual_close_button, ax, ay)) close_annual();
+                    continue;
+                }
                 if (event.button.button == SDL_BUTTON_MIDDLE &&
                     !world.snapshot().bankrupt) {
                     dragging = true;
@@ -2060,7 +2130,7 @@ int main(int argc, char** argv) {
                         if (options_open) {
                             const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
                             if (contains(back, mx, my)) options_open = false;
-                            for (int row = 0; row < 10; ++row) {
+                            for (int row = 0; row < 11; ++row) {
                                 if (!contains(option_button(row), mx, my)) continue;
                                 switch (row) {
                                 case 0: toggle_play(); break;
@@ -2073,6 +2143,14 @@ int main(int argc, char** argv) {
                                 case 7: start_event(grace::EventKind::food_drive); break;
                                 case 8: camera = Camera{}; break;
                                 case 9: step_week(); break;
+                                case 10:
+                                    if (world.snapshot().last_report_year > 0)
+                                        show_annual(!paused);
+                                    else {
+                                        feedback = "The first annual report arrives at the start of Year 2.";
+                                        feedback_until = SDL_GetTicks() + 4000;
+                                    }
+                                    break;
                                 }
                                 break;
                             }
@@ -2202,9 +2280,13 @@ int main(int argc, char** argv) {
                        (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN] ? movement : 0.0f));
         if (paused) last_week = now;
         if (!paused && now - last_week >= 2500) {
+            const int previous_report = world.snapshot().last_report_year;
             world.advance_week();
             record_finances();
             last_week = now;
+            if (soak_seconds == 0 && !world.snapshot().bankrupt &&
+                world.snapshot().last_report_year != previous_report)
+                show_annual(true);
             if (world.snapshot().bankrupt) {
                 paused = true;
                 budget_open = false;
@@ -2257,8 +2339,9 @@ int main(int argc, char** argv) {
         fill(renderer, {330, 10, 270, 62}, {43, 65, 65});
         fill(renderer, {330, 10, 3, 62}, {105, 184, 114});
         SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
-        SDL_RenderDebugTextFormat(renderer, 34, 14, "WEEK %d  |  %s",
-                                  state.week, state.bankrupt ? "BANKRUPT" :
+        const auto date = calendar_date(state.week);
+        SDL_RenderDebugTextFormat(renderer, 34, 14, "%s %02d Y%d  |  %s",
+                                  date.month, date.day, date.year, state.bankrupt ? "BANKRUPT" :
                                   !simulation_started ? "SETUP" : paused ? "PAUSED" : "RUNNING");
         SDL_RenderDebugTextFormat(renderer, 34, 29,
             "PEOPLE %d / %d  |  JOY %d", state.population,
@@ -2491,19 +2574,16 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "OPTIONS MENU");
             const SDL_FRect back{static_cast<float>(sidebar_x + 8), 134, 172, 34};
             draw_button(renderer, back, "BACK TO TOOLS");
-            const std::array<std::string, 10> labels{
+            const std::array<std::string, 11> labels{
                 paused ? "PLAY TOWN" : "PAUSE TOWN", "OPEN BUDGET",
                 std::string("GIVING: ") + giving_name(state.giving_policy),
                 std::string("SERVICES: ") + service_name(state.service_budget),
                 std::string("TAX: ") + tax_name(state.tax_policy),
                 std::string("VOLUNTEERS: ") + (state.care_first ? "CARE" : "CHAPEL"),
                 "GATHERING (30)", "FOOD DRIVE (25)", "RESET CAMERA",
-                "STEP WEEK"};
+                "STEP WEEK", "ANNUAL REPORT"};
             for (int row = 0; row < static_cast<int>(labels.size()); ++row)
                 draw_button(renderer, option_button(row), labels[static_cast<std::size_t>(row)].c_str());
-            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 688, "ESC CLOSES MENU");
-            SDL_RenderDebugText(renderer, sidebar_x + 12, 708, "KEYS STILL WORK");
         } else {
             SDL_RenderDebugText(renderer, sidebar_x + 12, 112, "BUILD TOOLS");
             for (std::size_t index = 0; index < tools.size(); ++index) {
@@ -2922,6 +3002,46 @@ int main(int argc, char** argv) {
             SDL_RenderDebugText(renderer, 620, 693, "EXPENSES");
             }
         }
+        if (annual_open && state.last_report_year > 0) {
+            tint(renderer, {static_cast<float>(margin), static_cast<float>(header),
+                static_cast<float>(map_width), static_cast<float>(map_height)},
+                {9, 16, 18}, 175);
+            fill(renderer, {210, 185, 620, 415}, {29, 45, 46});
+            const SDL_FRect annual_outline{210, 185, 620, 415};
+            SDL_SetRenderDrawColor(renderer, 218, 174, 103, 255);
+            SDL_RenderRect(renderer, &annual_outline);
+            fill(renderer, {211, 186, 618, 48}, {66, 61, 47});
+            SDL_SetRenderDrawColor(renderer, 255, 239, 203, 255);
+            SDL_RenderDebugTextFormat(renderer, 235, 204,
+                "YEAR %d  |  ANNUAL TOWN REPORT", state.last_report_year);
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugTextFormat(renderer, 235, 253,
+                "WEEKLY CASHFLOW  |  %d WEEKS RECORDED", state.last_year_weeks_recorded);
+            fill(renderer, {235, 273, 570, 78}, {43, 65, 65});
+            SDL_SetRenderDrawColor(renderer, 245, 238, 211, 255);
+            SDL_RenderDebugTextFormat(renderer, 250, 290, "INCOME  +%lld",
+                static_cast<long long>(state.last_year_income));
+            SDL_RenderDebugTextFormat(renderer, 450, 290, "EXPENSES  -%lld",
+                static_cast<long long>(state.last_year_expenses));
+            SDL_RenderDebugTextFormat(renderer, 250, 322, "ANNUAL OPERATING NET  %+lld",
+                static_cast<long long>(state.last_year_income - state.last_year_expenses));
+            SDL_RenderDebugTextFormat(renderer, 235, 375,
+                "FUNDS: START %d  |  END %d  |  CHANGE %+d",
+                state.last_year_opening_funds, state.last_year_closing_funds,
+                state.last_year_closing_funds - state.last_year_opening_funds);
+            SDL_RenderDebugTextFormat(renderer, 235, 406,
+                "END OF YEAR: POPULATION %d  |  CITY SCORE %d / 100",
+                state.last_year_population, state.last_year_city_score);
+            SDL_SetRenderDrawColor(renderer, 180, 202, 187, 255);
+            SDL_RenderDebugText(renderer, 235, 445,
+                "Funds also reflect construction, events and loans.");
+            SDL_RenderDebugText(renderer, 235, 468,
+                state.last_year_weeks_recorded < 52
+                    ? "Partial year: tracking began when this older save was loaded."
+                    : "View this report again from Options > Annual Report.");
+            draw_button(renderer, annual_close_button,
+                annual_resume ? "CONTINUE" : "CLOSE");
+        }
         if (advisor_open && !state.bankrupt) {
             tint(renderer, {static_cast<float>(margin), static_cast<float>(header),
                 static_cast<float>(map_width), static_cast<float>(map_height)},
@@ -2969,6 +3089,11 @@ int main(int argc, char** argv) {
             if (frame) SDL_DestroySurface(frame);
         }
         SDL_RenderPresent(renderer);
+        if (annual_smoke && (!annual_open || !paused ||
+            world.snapshot().week != 53 || world.snapshot().last_report_year != 1)) {
+            std::fprintf(stderr, "Annual report did not open at the new year\n");
+            exit_status = 1;
+        }
         if (smoke && (!paused || simulation_started || world.snapshot().week != 1)) {
             std::fprintf(stderr, "New game did not start in setup mode\n");
             exit_status = 1;
@@ -3039,7 +3164,7 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "Bridge drag smoke test failed\n");
             exit_status = 1;
         }
-        if (smoke || capture || drag_smoke || pan_smoke || bridge_smoke || zone_smoke || toolbar_smoke || power_smoke ||
+        if (smoke || annual_smoke || capture || drag_smoke || pan_smoke || bridge_smoke || zone_smoke || toolbar_smoke || power_smoke ||
             traffic_smoke || save_smoke ||
             bankrupt_smoke ||
             (soak_seconds > 0 && now - started >= static_cast<Uint64>(soak_seconds) * 1000))

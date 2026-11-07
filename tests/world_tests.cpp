@@ -29,6 +29,40 @@ int main() {
     assert(start.weekly_upkeep == start.building_upkeep + start.road_upkeep +
                                   start.service_upkeep +
                                   start.community_upkeep);
+    grace::World annual_town;
+    for (int i = 0; i < 10; ++i) annual_town.advance_week();
+    std::stringstream annual_save;
+    assert(annual_town.save(annual_save));
+    auto annual_restored = grace::World::load(annual_save);
+    assert(annual_restored && annual_restored->snapshot().year_weeks_recorded == 10);
+    for (int i = 0; i < 42; ++i) annual_restored->advance_week();
+    const auto annual = annual_restored->snapshot();
+    assert(annual.week == 53 && annual.last_report_year == 1);
+    assert(annual.last_year_weeks_recorded == 52 && annual.year_weeks_recorded == 0);
+    assert(annual.last_year_income == 520 && annual.last_year_expenses == 416);
+    assert(annual.last_year_opening_funds == 260 && annual.last_year_closing_funds == 364);
+    std::stringstream completed_year_save;
+    assert(annual_restored->save(completed_year_save));
+    const auto completed_year = grace::World::load(completed_year_save);
+    assert(completed_year && completed_year->snapshot().last_report_year == 1 &&
+           completed_year->snapshot().last_year_income == 520);
+    std::istringstream old_source(annual_save.str());
+    std::string old_header, old_state, field;
+    std::getline(old_source, old_header);
+    std::getline(old_source, old_state);
+    std::istringstream old_fields(old_state);
+    std::stringstream legacy_five;
+    legacy_five << "GRACE_VALLEY_WORLD 5\n";
+    for (int i = 0; i < 16; ++i) {
+        assert(old_fields >> field);
+        legacy_five << field << ' ';
+    }
+    legacy_five << '\n' << old_source.rdbuf();
+    auto old_year = grace::World::load(legacy_five);
+    assert(old_year && old_year->snapshot().year_weeks_recorded == 0);
+    for (int i = 0; i < 42; ++i) old_year->advance_week();
+    assert(old_year->snapshot().last_report_year == 1 &&
+           old_year->snapshot().last_year_weeks_recorded == 42);
     grace::World borrower;
     assert(borrower.take_loan());
     assert(!borrower.take_loan());
@@ -142,11 +176,16 @@ int main() {
         int version, week, population, treasury, care_first, bankrupt;
         int giving, services, road_budget, tax, events, event_weeks, event_kind;
         int last_event, low_score_weeks, recovery_weeks, loan_balance;
+        std::int64_t year_income, year_expenses, last_income, last_expenses;
+        int opening, weeks, report_year, last_opening, last_closing;
+        int last_population, last_score, last_weeks;
         int saved_width, saved_height;
         source >> magic >> version >> week >> population >> treasury >> care_first >>
             bankrupt >> giving >> services >> road_budget >> tax >> events >>
             event_weeks >> event_kind >> last_event >> low_score_weeks >>
-            recovery_weeks >> loan_balance >> saved_width >> saved_height;
+            recovery_weeks >> loan_balance >> year_income >> year_expenses >> opening >>
+            weeks >> report_year >> last_income >> last_expenses >> last_opening >>
+            last_closing >> last_population >> last_score >> last_weeks >> saved_width >> saved_height;
         std::stringstream legacy;
         legacy << "GRACE_VALLEY_WORLD " << (old_map ? 2 : 1) << '\n'
                << week << ' ' << population << ' ' << treasury << ' ' << care_first

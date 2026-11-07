@@ -724,6 +724,10 @@ void World::advance_week() {
     rebuild_staffing();
     state_ = evaluate();
     const Snapshot demand_at_start = state_;
+    const bool year_end = state_.week % 52 == 0;
+    state_.year_income += state_.weekly_income;
+    state_.year_expenses += state_.weekly_upkeep;
+    ++state_.year_weeks_recorded;
     state_.treasury += state_.weekly_income - state_.weekly_upkeep;
     if (state_.treasury < 0) {
         state_.bankrupt = true;
@@ -779,6 +783,20 @@ void World::advance_week() {
         rebuild_traffic();
         state_ = evaluate();
         state_.low_score_weeks = low_score_weeks_;
+    }
+    if (year_end) {
+        state_.last_report_year = (state_.week - 2) / 52 + 1;
+        state_.last_year_income = state_.year_income;
+        state_.last_year_expenses = state_.year_expenses;
+        state_.last_year_opening_funds = state_.year_opening_funds;
+        state_.last_year_closing_funds = state_.treasury;
+        state_.last_year_population = state_.population;
+        state_.last_year_city_score = state_.city_score;
+        state_.last_year_weeks_recorded = state_.year_weeks_recorded;
+        state_.year_income = 0;
+        state_.year_expenses = 0;
+        state_.year_opening_funds = state_.treasury;
+        state_.year_weeks_recorded = 0;
     }
 }
 
@@ -876,7 +894,7 @@ EventError World::host_event(EventKind kind) {
 Snapshot World::snapshot() const { return state_; }
 
 bool World::save(std::ostream& output) const {
-    output << "GRACE_VALLEY_WORLD 5\n";
+    output << "GRACE_VALLEY_WORLD 6\n";
     output << state_.week << ' ' << state_.population << ' ' << state_.treasury << ' '
            << static_cast<int>(state_.care_first) << ' '
            << static_cast<int>(state_.bankrupt) << ' '
@@ -887,7 +905,13 @@ bool World::save(std::ostream& output) const {
            << state_.events_hosted << ' ' << state_.event_weeks_left << ' '
            << static_cast<int>(state_.event_kind) << ' ' << last_event_week_ << ' '
            << low_score_weeks_ << ' ' << recovery_weeks_ << ' '
-           << state_.loan_balance << '\n';
+           << state_.loan_balance << ' ' << state_.year_income << ' '
+           << state_.year_expenses << ' ' << state_.year_opening_funds << ' '
+           << state_.year_weeks_recorded << ' ' << state_.last_report_year << ' '
+           << state_.last_year_income << ' ' << state_.last_year_expenses << ' '
+           << state_.last_year_opening_funds << ' ' << state_.last_year_closing_funds << ' '
+           << state_.last_year_population << ' ' << state_.last_year_city_score << ' '
+           << state_.last_year_weeks_recorded << '\n';
     output << width << ' ' << height << '\n';
     for (std::size_t i = 0; i < tiles_.size(); ++i)
         output << static_cast<int>(tiles_[i]) << ' '
@@ -902,7 +926,7 @@ std::optional<World> World::load(std::istream& input) {
     std::string magic;
     int version = 0;
     if (!(input >> magic >> version) || magic != "GRACE_VALLEY_WORLD" ||
-        (version < 1 || version > 5))
+        (version < 1 || version > 6))
         return std::nullopt;
     World result;
     int care_first, bankrupt, giving, services, roads = 1, tax, event_kind;
@@ -918,6 +942,15 @@ std::optional<World> World::load(std::istream& input) {
         return std::nullopt;
     if (version >= 5 && !(input >> result.state_.loan_balance))
         return std::nullopt;
+    if (version >= 6) {
+        if (!(input >> result.state_.year_income >> result.state_.year_expenses >>
+              result.state_.year_opening_funds >> result.state_.year_weeks_recorded >>
+              result.state_.last_report_year >> result.state_.last_year_income >>
+              result.state_.last_year_expenses >> result.state_.last_year_opening_funds >>
+              result.state_.last_year_closing_funds >> result.state_.last_year_population >>
+              result.state_.last_year_city_score >> result.state_.last_year_weeks_recorded))
+            return std::nullopt;
+    } else result.state_.year_opening_funds = result.state_.treasury;
     if (result.state_.week < 1 || result.state_.week > 100000000 ||
         result.state_.population < 0 || result.state_.population > width * height * 4 ||
         result.state_.treasury < -1000000000 || result.state_.treasury > 1000000000 ||
@@ -927,6 +960,18 @@ std::optional<World> World::load(std::istream& input) {
         low_score_weeks < 0 || low_score_weeks > 2 ||
         recovery_weeks < 0 || recovery_weeks > 2 ||
         result.state_.loan_balance < 0 || result.state_.loan_balance > loan_amount ||
+        result.state_.year_income < 0 || result.state_.year_expenses < 0 ||
+        result.state_.last_year_income < 0 || result.state_.last_year_expenses < 0 ||
+        result.state_.year_income > 1000000000000LL || result.state_.year_expenses > 1000000000000LL ||
+        result.state_.last_year_income > 1000000000000LL || result.state_.last_year_expenses > 1000000000000LL ||
+        result.state_.year_opening_funds < -1000000000 || result.state_.year_opening_funds > 1000000000 ||
+        result.state_.last_year_opening_funds < -1000000000 || result.state_.last_year_opening_funds > 1000000000 ||
+        result.state_.last_year_closing_funds < -1000000000 || result.state_.last_year_closing_funds > 1000000000 ||
+        result.state_.year_weeks_recorded < 0 || result.state_.year_weeks_recorded > 52 ||
+        result.state_.last_year_weeks_recorded < 0 || result.state_.last_year_weeks_recorded > 52 ||
+        result.state_.last_report_year < 0 || result.state_.last_report_year > (result.state_.week - 1) / 52 ||
+        result.state_.last_year_population < 0 || result.state_.last_year_population > width * height * 4 ||
+        result.state_.last_year_city_score < 0 || result.state_.last_year_city_score > 100 ||
         tax < 0 || tax > 2 || result.state_.events_hosted < 0 ||
         result.state_.event_weeks_left < 0 || result.state_.event_weeks_left > 2 ||
         event_kind < 0 || event_kind > 1 ||

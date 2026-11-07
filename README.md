@@ -14,6 +14,7 @@ A cozy city builder about growing a welcoming valley community. Build roads, pow
 | Demolish roads, zones, or buildings | Select **Bulldozer** or press `9`, then click or drag with the left mouse button |
 | Open the Options menu | Click **Options** at the top; it contains play, budget, policy, event, camera, and single-week actions |
 | Open town reports | Click **Reports** or press `I`; the map stays clear until you ask for demand, service, traffic, and wellbeing details |
+| Review the annual report | It opens at the start of each year; reopen the latest report from **Options > Annual Report** |
 | Inspect power supply | Open Reports, then click **Power** or press `Tab` to compare capacity, current consumption, projected need, and surplus after all zones develop |
 | Review city issues | Open Reports and select **Issues** to see active alerts and suggested fixes |
 | Follow traffic advice | Click the top **Traffic** alert to open the Issues tab; it identifies the busiest road and suggests a route or maintenance fix |
@@ -99,6 +100,8 @@ The top bar shows **IN**, **OUT**, and **NET** for the next week at the current 
 This is an early balance pass. Compact, spread, and event-led towns remain viable in the automated scenarios. A costly service budget can cause bankruptcy; an expanding town can also run short of power. Human playtesting will decide whether the choices and pace feel fair.
 
 The community loan provides 200 funds immediately. Every fourth week, the town pays 20 of principal plus 5% interest on the remaining balance. That payment appears in the week's expenses. Budget shows the outstanding balance and expected monthly payment; a new loan is available after repayment.
+
+The calendar starts on January 1 of Year 1. Each game year has 52 weeks, arranged in twelve months using a repeating four, four, five-week pattern. At the new year, the game pauses for an annual report with recorded weekly income and expenses, opening and closing funds, population, and City Score. Construction, events, and loans affect the funds change separately from weekly cashflow. Older saves begin annual tracking when loaded, so their first report can cover a partial year.
 
 ## Build in Visual Studio
 
