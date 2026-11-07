@@ -1,15 +1,15 @@
 what suggestions about the game?
 
-Grace Valley has the foundations of a city builder: zoning, roads, power, traffic, a budget, and community needs. I’d focus next on making those systems easier to understand and giving players more interesting ways to respond to problems.
+Grace Valley has the foundations of a city builder: zoning, roads, power, traffic, a budget, and community needs. Iâ€™d focus next on making those systems easier to understand and giving players more interesting ways to respond to problems.
 
-My strongest suggestions are:
+Progress check (November 2026):
 
-1. City overlays. Add buttons for power, pollution, noise, traffic, and service coverage. Each overlay could color the map so players can see where a problem starts and which neighborhoods it affects.
-2. More traffic solutions. Add walking paths and a community shuttle, alongside alternate road routes. This would give players choices beyond upgrading roads and make the existing traffic suggestions more useful.
-3. A power progression. Let players replace the noisy starter plant with cleaner options, such as solar, wind, or an upgraded plant. Each could have different construction costs, upkeep, output, and pollution.
-4. Surplus power sales. Allow a town with spare capacity to sign a contract with a neighboring community. Sales would bring income, but the player would need to retain enough power for local growth.
-5. A more useful advisor. Let the advisor explain why an issue matters and point to the affected area. For example: “These homes are near the power plant. Moving future housing farther away could improve their wellbeing.”
-6. Church and community activities. Give chapels choices such as youth programs, community meals, or volunteer outreach. These could improve belonging or care while using funds and volunteers, making the church theme part of the decisions.
-7. An annual town review. Expand the new report with changes since last year: population gained, buildings developed, average City Score, finances, and the town’s most pressing issue. A few milestones—such as serving a certain number of households—could give players goals to work toward.
+1. City overlays - DONE. Map Views includes power, pollution, noise, traffic, and service coverage, with a None option to clear the view.
+2. Traffic choices - DONE. Congestion-aware routing lets parallel roads share trips. Connected walking paths replace eligible car commutes, and road-connected shuttle stops carry nearby commuters. Traffic alerts recommend these options.
+3. Cleaner power choices - PARTIAL. Solar and wind plants are buildable, with different costs, output, and upkeep and no smoke. The fuel plant remains available. A plant upgrade or replacement progression is still open.
+4. Surplus power sales - PLANNED. The Power report shows unused capacity and projected surplus, but there are no neighbor contracts or export income yet.
+5. More useful advisor - PARTIAL. A city advisor gives financial-crisis guidance, and the Issues report gives location-aware issues and suggestions. The advisor does not yet explain specific affected neighborhoods or jump the camera to them.
+6. Church and community activities - PARTIAL. Gatherings and food drives improve belonging or care and use funds and volunteers. Chapels do not yet offer selectable ongoing programs such as youth activities or outreach.
+7. Annual town review - PARTIAL. The calendar and annual report track yearly income, expenses, opening and closing funds, population, and City Score. Building changes, average score, and milestone goals are not yet included.
 
-I’d start with city overlays, then add cleaner power choices. Both build on systems already in the game and would make the consequences of the player’s decisions much easier to see.
+Next suggested priorities: add neighbor power contracts, then make the annual review and advisor more specific and actionable.
